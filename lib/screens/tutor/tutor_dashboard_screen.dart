@@ -60,10 +60,6 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      IconButton(
-                        icon: const Icon(LucideIcons.menu, color: Color(0xFF1A1C1E)),
-                        onPressed: () {},
-                      ),
                       Row(
                         children: [
                           Image.asset(
