@@ -6,7 +6,7 @@ import '../../models/mock_data.dart';
 import '../login_screen.dart';
 import '../../widgets/student_layout.dart';
 import '../../widgets/tutor_layout.dart';
-import 'tutor_application_screen.dart';
+import '../tutor/tutor_application_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   final bool isTutorMode;
