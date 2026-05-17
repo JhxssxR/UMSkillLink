@@ -39,6 +39,7 @@ dependencies:
   fl_chart: ^1.2.0
   responsive_framework: ^1.5.1
   firebase_core: ^4.9.0
+  cloud_firestore: ^6.4.1
 
 dev_dependencies:
   flutter_test:

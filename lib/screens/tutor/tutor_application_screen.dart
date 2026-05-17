@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/app_theme.dart';
 import '../../widgets/tutor_layout.dart';
 
@@ -93,81 +94,131 @@ class _TutorApplicationScreenState extends State<TutorApplicationScreen> {
     });
   }
 
-  void _submitApplication() {
-    // Show success dialog and navigate to Tutor Mode
+  void _submitApplication() async {
+    // Show a loading dialog first
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(LucideIcons.checkCircle2, color: Colors.green, size: 54),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Application Submitted!',
-                  style: GoogleFonts.manrope(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.neutralColor,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Your application is being verified by the UM Super Admin. You have been granted instant sandbox access to explore the Tutor Dashboard!',
-                  style: GoogleFonts.manrope(
-                    fontSize: 14,
-                    color: const Color(0xFF7A7C80),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context); // Close Dialog
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (context) => const TutorLayout()),
-                        (route) => false,
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryRed,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: Text(
-                      'Go to Tutor Dashboard',
-                      style: GoogleFonts.manrope(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+        return const Center(
+          child: CircularProgressIndicator(
+            color: AppTheme.primaryRed,
           ),
         );
       },
     );
+
+    try {
+      // Save data to Firestore collection "tutor_applications"
+      await FirebaseFirestore.instance.collection('tutor_applications').add({
+        'name': _nameController.text.trim(),
+        'universityId': _idController.text.trim(),
+        'college': _selectedCollege,
+        'skills': _skills,
+        'bio': _bioController.text.trim(),
+        'hourlyRate': double.tryParse(_rateController.text.trim()) ?? 0.0,
+        'idUploaded': _idUploaded,
+        'expertiseUploaded': _expertiseUploaded,
+        'status': 'pending',
+        'submittedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Dismiss the loading dialog
+      if (mounted) Navigator.pop(context);
+
+      // Show success dialog and navigate to Tutor Mode
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(LucideIcons.checkCircle2, color: Colors.green, size: 54),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Application Submitted!',
+                      style: GoogleFonts.manrope(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.neutralColor,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Your application is being verified by the UM Super Admin. You have been granted instant sandbox access to explore the Tutor Dashboard!',
+                      style: GoogleFonts.manrope(
+                        fontSize: 14,
+                        color: const Color(0xFF7A7C80),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(context); // Close Dialog
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(builder: (context) => const TutorLayout()),
+                            (route) => false,
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryRed,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: Text(
+                          'Go to Tutor Dashboard',
+                          style: GoogleFonts.manrope(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      }
+    } catch (e) {
+      // Dismiss the loading dialog
+      if (mounted) Navigator.pop(context);
+
+      // Show error notification
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to submit application: $e',
+              style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+            ),
+            backgroundColor: AppTheme.primaryRed,
+          ),
+        );
+      }
+    }
   }
 
   @override
