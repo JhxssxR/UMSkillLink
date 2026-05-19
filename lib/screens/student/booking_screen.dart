@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/app_theme.dart';
+import '../../components/custom_app_bar.dart';
 import 'payment_screen.dart';
 
 class BookingScreen extends StatefulWidget {
@@ -28,7 +29,11 @@ class _BookingScreenState extends State<BookingScreen> {
   ];
 
   final List<String> _morningSlots = ['09:00 AM', '10:30 AM', '11:00 AM'];
-  final List<String> _afternoonSlots = ['01:30 PM', '03:00 PM', '04:30 PM']; // 04:30 PM will be disabled
+  final List<String> _afternoonSlots = [
+    '01:30 PM',
+    '03:00 PM',
+    '04:30 PM',
+  ]; // 04:30 PM will be disabled
 
   @override
   void initState() {
@@ -48,61 +53,23 @@ class _BookingScreenState extends State<BookingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Dynamic price calculation matching screenshots: hourly 450 + 25 fee = 475
-    const double hourlyRate = 450.00;
+    // Dynamic price calculation matching screenshots: hourly tutor price + 25 fee
+    final double hourlyRate = (widget.tutor['price'] ?? 450.0).toDouble();
     const double serviceFee = 25.00;
-    const double totalAmount = hourlyRate + serviceFee;
+    final double totalAmount = hourlyRate + serviceFee;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
+      appBar: const CustomAppBar(),
       body: SafeArea(
         child: Column(
           children: [
-            // Custom Navigation Header
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    icon: const Icon(LucideIcons.arrowLeft, color: Color(0xFF1A1C1E)),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                  Row(
-                    children: [
-                      Image.asset(
-                        'assets/images/um_logo.png',
-                        height: 28,
-                        errorBuilder: (context, error, stackTrace) => const Icon(
-                          LucideIcons.graduationCap,
-                          color: AppTheme.primaryRed,
-                          size: 28,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'UM SkillLink',
-                        style: GoogleFonts.manrope(
-                          color: AppTheme.primaryRed,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 18,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                  IconButton(
-                    icon: const Icon(LucideIcons.helpCircle, color: Color(0xFF7A7C80)),
-                    onPressed: () {},
-                  ),
-                ],
-              ),
-            ),
-
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -112,17 +79,23 @@ class _BookingScreenState extends State<BookingScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFEEEFF0), width: 1),
+                        border: Border.all(
+                          color: const Color(0xFFEEEFF0),
+                          width: 1,
+                        ),
                       ),
                       child: Row(
                         children: [
                           Stack(
                             children: [
-                              const CircleAvatar(
+                              CircleAvatar(
                                 radius: 30,
-                                backgroundImage: NetworkImage(
+                                backgroundColor: Colors.grey.shade300,
+                                backgroundImage: const NetworkImage(
                                   'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
                                 ),
+                                onBackgroundImageError:
+                                    (exception, stackTrace) {},
                               ),
                               Positioned(
                                 bottom: 0,
@@ -133,7 +106,11 @@ class _BookingScreenState extends State<BookingScreen> {
                                     color: Color(0xFFFBB03B),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(Icons.check, color: Colors.white, size: 10),
+                                  child: const Icon(
+                                    Icons.check,
+                                    color: Colors.white,
+                                    size: 10,
+                                  ),
                                 ),
                               ),
                             ],
@@ -163,7 +140,11 @@ class _BookingScreenState extends State<BookingScreen> {
                                 const SizedBox(height: 4),
                                 Row(
                                   children: [
-                                    const Icon(Icons.star, color: Color(0xFFFBB03B), size: 14),
+                                    const Icon(
+                                      Icons.star,
+                                      color: Color(0xFFFBB03B),
+                                      size: 14,
+                                    ),
                                     const SizedBox(width: 4),
                                     Text(
                                       '4.9',
@@ -215,7 +196,11 @@ class _BookingScreenState extends State<BookingScreen> {
                               ),
                             ),
                             const SizedBox(width: 4),
-                            const Icon(LucideIcons.calendar, color: AppTheme.primaryRed, size: 16),
+                            const Icon(
+                              LucideIcons.calendar,
+                              color: AppTheme.primaryRed,
+                              size: 16,
+                            ),
                           ],
                         ),
                       ],
@@ -241,10 +226,14 @@ class _BookingScreenState extends State<BookingScreen> {
                               width: 58,
                               margin: const EdgeInsets.only(right: 10),
                               decoration: BoxDecoration(
-                                color: isSelected ? AppTheme.primaryRed : Colors.white,
+                                color: isSelected
+                                    ? AppTheme.primaryRed
+                                    : Colors.white,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: isSelected ? AppTheme.primaryRed : const Color(0xFFEEEFF0),
+                                  color: isSelected
+                                      ? AppTheme.primaryRed
+                                      : const Color(0xFFEEEFF0),
                                   width: 1.5,
                                 ),
                               ),
@@ -255,7 +244,9 @@ class _BookingScreenState extends State<BookingScreen> {
                                     date['day']!,
                                     style: GoogleFonts.manrope(
                                       fontSize: 10,
-                                      color: isSelected ? Colors.white.withOpacity(0.8) : const Color(0xFF7A7C80),
+                                      color: isSelected
+                                          ? Colors.white.withOpacity(0.8)
+                                          : const Color(0xFF7A7C80),
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -264,7 +255,9 @@ class _BookingScreenState extends State<BookingScreen> {
                                     date['num']!,
                                     style: GoogleFonts.manrope(
                                       fontSize: 16,
-                                      color: isSelected ? Colors.white : const Color(0xFF1A1C1E),
+                                      color: isSelected
+                                          ? Colors.white
+                                          : const Color(0xFF1A1C1E),
                                       fontWeight: FontWeight.w800,
                                     ),
                                   ),
@@ -291,7 +284,11 @@ class _BookingScreenState extends State<BookingScreen> {
                     // Morning slots section
                     Row(
                       children: [
-                        const Icon(LucideIcons.sun, color: Color(0xFF7A7C80), size: 16),
+                        const Icon(
+                          LucideIcons.sun,
+                          color: Color(0xFF7A7C80),
+                          size: 16,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           'MORNING',
@@ -319,10 +316,14 @@ class _BookingScreenState extends State<BookingScreen> {
                               margin: const EdgeInsets.only(right: 8),
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
-                                color: isSelected ? AppTheme.primaryRed : Colors.white,
+                                color: isSelected
+                                    ? AppTheme.primaryRed
+                                    : Colors.white,
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
-                                  color: isSelected ? AppTheme.primaryRed : const Color(0xFFEEEFF0),
+                                  color: isSelected
+                                      ? AppTheme.primaryRed
+                                      : const Color(0xFFEEEFF0),
                                 ),
                               ),
                               child: Text(
@@ -331,7 +332,9 @@ class _BookingScreenState extends State<BookingScreen> {
                                 style: GoogleFonts.manrope(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
-                                  color: isSelected ? Colors.white : const Color(0xFF495057),
+                                  color: isSelected
+                                      ? Colors.white
+                                      : const Color(0xFF495057),
                                 ),
                               ),
                             ),
@@ -344,7 +347,11 @@ class _BookingScreenState extends State<BookingScreen> {
                     // Afternoon slots section
                     Row(
                       children: [
-                        const Icon(LucideIcons.sun, color: Color(0xFF7A7C80), size: 16),
+                        const Icon(
+                          LucideIcons.sun,
+                          color: Color(0xFF7A7C80),
+                          size: 16,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           'AFTERNOON',
@@ -377,12 +384,16 @@ class _BookingScreenState extends State<BookingScreen> {
                               decoration: BoxDecoration(
                                 color: isDisabled
                                     ? const Color(0xFFE9ECEF).withOpacity(0.5)
-                                    : (isSelected ? AppTheme.primaryRed : Colors.white),
+                                    : (isSelected
+                                          ? AppTheme.primaryRed
+                                          : Colors.white),
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
                                   color: isDisabled
                                       ? const Color(0xFFE9ECEF)
-                                      : (isSelected ? AppTheme.primaryRed : const Color(0xFFEEEFF0)),
+                                      : (isSelected
+                                            ? AppTheme.primaryRed
+                                            : const Color(0xFFEEEFF0)),
                                 ),
                               ),
                               child: Text(
@@ -393,8 +404,12 @@ class _BookingScreenState extends State<BookingScreen> {
                                   fontWeight: FontWeight.bold,
                                   color: isDisabled
                                       ? const Color(0xFFADB5BD)
-                                      : (isSelected ? Colors.white : const Color(0xFF495057)),
-                                  decoration: isDisabled ? TextDecoration.lineThrough : null,
+                                      : (isSelected
+                                            ? Colors.white
+                                            : const Color(0xFF495057)),
+                                  decoration: isDisabled
+                                      ? TextDecoration.lineThrough
+                                      : null,
                                 ),
                               ),
                             ),
@@ -434,7 +449,8 @@ class _BookingScreenState extends State<BookingScreen> {
                       maxLines: 4,
                       maxLength: 500,
                       decoration: InputDecoration(
-                        hintText: 'E.g. I need help with integration by parts and solving differential equations...',
+                        hintText:
+                            'E.g. I need help with integration by parts and solving differential equations...',
                         hintStyle: GoogleFonts.manrope(
                           color: const Color(0xFFADB5BD),
                           fontSize: 12,
@@ -443,15 +459,23 @@ class _BookingScreenState extends State<BookingScreen> {
                         fillColor: Colors.white,
                         filled: true,
                         focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: AppTheme.primaryRed, width: 1.5),
+                          borderSide: const BorderSide(
+                            color: AppTheme.primaryRed,
+                            width: 1.5,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Color(0xFFEEEFF0)),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFEEEFF0),
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      style: GoogleFonts.manrope(fontSize: 13, color: const Color(0xFF495057)),
+                      style: GoogleFonts.manrope(
+                        fontSize: 13,
+                        color: const Color(0xFF495057),
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Align(
@@ -564,8 +588,10 @@ class _BookingScreenState extends State<BookingScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (context) => ConfirmPaymentScreen(
-                          tutorName: 'Gabriel Reyes',
-                          subjectName: 'Advanced Calculus Tutoring',
+                          tutorName: widget.tutor['name'] ?? 'Gabriel Reyes',
+                          subjectName:
+                              widget.tutor['subject'] ??
+                              'Advanced Calculus Tutoring',
                           dateStr: dateStr,
                           timeSlot: _selectedTimeSlot,
                           totalAmount: totalAmount,

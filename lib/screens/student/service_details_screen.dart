@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/app_theme.dart';
+import '../../components/custom_app_bar.dart';
 import 'booking_screen.dart';
 
 class ServiceDetailsScreen extends StatelessWidget {
@@ -12,16 +13,18 @@ class ServiceDetailsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(LucideIcons.arrowLeft, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
+      appBar: CustomAppBar(
+        title: 'Service Details',
+        centerTitle: false,
         actions: [
-          IconButton(icon: const Icon(LucideIcons.heart, color: Colors.black), onPressed: () {}),
-          IconButton(icon: const Icon(LucideIcons.share2, color: Colors.black), onPressed: () {}),
+          IconButton(
+            icon: const Icon(LucideIcons.heart, color: Colors.black),
+            onPressed: () {},
+          ),
+          IconButton(
+            icon: const Icon(LucideIcons.share2, color: Colors.black),
+            onPressed: () {},
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -32,8 +35,16 @@ class ServiceDetailsScreen extends StatelessWidget {
             Container(
               height: 200,
               width: double.infinity,
-              color: AppTheme.primaryRed.withValues(alpha: 0.05),
-              child: const Icon(LucideIcons.bookOpen, color: AppTheme.primaryRed, size: 64),
+              color: AppTheme.primaryRed.withOpacity(0.05),
+              child: Image.network(
+                tutor['avatarUrl'] ?? tutor['avatar'] ?? 'https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg',
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => const Icon(
+                  LucideIcons.image,
+                  color: AppTheme.primaryRed,
+                  size: 64,
+                ),
+              ),
             ),
 
             Padding(
@@ -43,46 +54,74 @@ class ServiceDetailsScreen extends StatelessWidget {
                 children: [
                   Text(
                     tutor['subject'],
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1A1C1E)),
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1A1C1E),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      const CircleAvatar(radius: 12, backgroundColor: AppTheme.primaryRed, child: Icon(LucideIcons.user, size: 12, color: Colors.white)),
+                      const CircleAvatar(
+                        radius: 12,
+                        backgroundColor: AppTheme.primaryRed,
+                        child: Icon(
+                          LucideIcons.user,
+                          size: 12,
+                          color: Colors.white,
+                        ),
+                      ),
                       const SizedBox(width: 8),
-                      Text(tutor['name'], style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(
+                        tutor['name'],
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
                       const Spacer(),
-                      const Icon(Icons.star, color: Color(0xFFFBB03B), size: 16),
-                      const SizedBox(width: 4),
-                      Text('${tutor['rating']} (${tutor['reviews']} reviews)', style: const TextStyle(fontWeight: FontWeight.w500)),
+                      if ((tutor['reviews'] ?? 0) > 0) ...[
+                        const Icon(
+                          Icons.star,
+                          color: Color(0xFFFBB03B),
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${tutor['rating']} (${tutor['reviews']} reviews)',
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                      ] else
+                        const Text(
+                          'New',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryRed,
+                          ),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 32),
 
-                  const Text('About Service', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'About Service',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 12),
                   Text(
-                    tutor['about'],
+                    tutor['about'].toString().replaceAll('Peer Tutor', tutor['name'] ?? 'The tutor'),
                     style: TextStyle(color: Colors.grey.shade700, height: 1.6),
                   ),
                   const SizedBox(height: 32),
 
-                  const Text('Availability', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Availability',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 16),
                   _buildInfoRow(LucideIcons.calendar, 'Mon-Fri, 5PM - 8PM'),
                   _buildInfoRow(LucideIcons.mapPin, 'UM Main Library / Online'),
-                  _buildInfoRow(LucideIcons.languages, 'English, Tagalog, Bisaya'),
-                  const SizedBox(height: 32),
-
-                  const Text('Student Reviews', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  _buildReviewCard(
-                    'Elena S.',
-                    'Kuya Juan helped me pass my Calculus midterm! His explanation of derivatives was so much clearer than my professor\'s lecture.',
-                  ),
-                  _buildReviewCard(
-                    'Marcus P.',
-                    'Patient and knowledgeable. He adjusted to my learning speed very well. Highly recommended for Engineering students.',
+                  _buildInfoRow(
+                    LucideIcons.languages,
+                    'English, Tagalog, Bisaya',
                   ),
                 ],
               ),
@@ -94,7 +133,13 @@ class ServiceDetailsScreen extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           color: Colors.white,
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -4))],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, -4),
+            ),
+          ],
         ),
         child: Row(
           children: [
@@ -102,8 +147,18 @@ class ServiceDetailsScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Price', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                Text('₱${tutor['price']} / hr', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primaryRed)),
+                const Text(
+                  'Price',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+                Text(
+                  '₱${tutor['price']} / hr',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryRed,
+                  ),
+                ),
               ],
             ),
             const SizedBox(width: 24),
@@ -121,9 +176,14 @@ class ServiceDetailsScreen extends StatelessWidget {
                   backgroundColor: AppTheme.primaryRed,
                   foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 56),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
-                child: const Text('Book Session', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                child: const Text(
+                  'Book Session',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
               ),
             ),
           ],
@@ -139,7 +199,10 @@ class ServiceDetailsScreen extends StatelessWidget {
         children: [
           Icon(icon, size: 18, color: AppTheme.primaryRed),
           const SizedBox(width: 12),
-          Text(text, style: const TextStyle(fontSize: 14, color: Color(0xFF1A1C1E))),
+          Text(
+            text,
+            style: const TextStyle(fontSize: 14, color: Color(0xFF1A1C1E)),
+          ),
         ],
       ),
     );
@@ -168,7 +231,14 @@ class ServiceDetailsScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Text(comment, style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.5)),
+          Text(
+            comment,
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
         ],
       ),
     );

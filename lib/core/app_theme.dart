@@ -7,7 +7,7 @@ class AppTheme {
   static const Color secondaryGold = Color(0xFFFBB03B);
   static const Color tertiaryIndigo = Color(0xFF4A47A3);
   static const Color neutralColor = Color(0xFF1A1C1E);
-  
+
   static const Color background = Color(0xFFF9F9FC);
   static const Color surface = Colors.white;
   static const Color onSurface = Color(0xFF1A1C1E);
@@ -63,4 +63,3 @@ class AppTheme {
     );
   }
 }
-

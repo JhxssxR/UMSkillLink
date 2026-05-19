@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../core/app_theme.dart';
+import 'super_admin/super_admin_portal.dart';
+import 'admin/admin_portal.dart';
+import 'google_signin_screen.dart';
+import '../core/demo_mode.dart';
 import '../widgets/student_layout.dart';
+import '../widgets/tutor_layout.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,21 +16,12 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  bool _isLoading = false;
+  final bool _isLoading = false;
 
-  void _handleLogin() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Simulate network delay
-    await Future.delayed(const Duration(milliseconds: 1500));
-
-    if (!mounted) return;
-
-    Navigator.pushReplacement(
+  void _handleLogin() {
+    Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const StudentLayout()),
+      MaterialPageRoute(builder: (context) => const GoogleSignInScreen()),
     );
   }
 
@@ -114,7 +110,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
             // Bottom Two-Thirds: Login Content
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 48.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 32.0,
+                vertical: 48.0,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -130,10 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Text(
                     'Sign in with your UM Google account to continue',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 48),
 
@@ -150,13 +146,15 @@ class _LoginScreenState extends State<LoginScreen> {
                         side: BorderSide(color: Colors.grey.shade200),
                       ),
                     ),
-                    child: _isLoading 
+                    child: _isLoading
                         ? const SizedBox(
                             height: 24,
                             width: 24,
                             child: CircularProgressIndicator(
                               strokeWidth: 2.5,
-                              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryRed),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                AppTheme.primaryRed,
+                              ),
                             ),
                           )
                         : Row(
@@ -171,7 +169,10 @@ class _LoginScreenState extends State<LoginScreen> {
                               const Flexible(
                                 child: Text(
                                   'Continue with Google',
-                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -185,7 +186,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(LucideIcons.lock, size: 16, color: Colors.grey.shade500),
+                      Icon(
+                        LucideIcons.lock,
+                        size: 16,
+                        color: Colors.grey.shade500,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         'Only @umindanao.edu.ph accounts are accepted.',
@@ -197,7 +202,25 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
-
+                  const SizedBox(height: 16),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SuperAdminPortal(),
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      'Access Super Admin Portal',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 13,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 64),
 
                   // Footer Links
@@ -208,7 +231,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: () {},
                         child: const Text(
                           'Terms of Service',
-                          style: TextStyle(color: AppTheme.primaryRed, fontSize: 13),
+                          style: TextStyle(
+                            color: AppTheme.primaryRed,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                       const Text('•', style: TextStyle(color: Colors.grey)),
@@ -216,7 +242,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: () {},
                         child: const Text(
                           'Privacy Policy',
-                          style: TextStyle(color: AppTheme.primaryRed, fontSize: 13),
+                          style: TextStyle(
+                            color: AppTheme.primaryRed,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                     ],

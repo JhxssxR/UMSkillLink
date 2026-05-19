@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/app_theme.dart';
 import '../../widgets/student_layout.dart';
+import '../../components/custom_app_bar.dart';
 
 class FeedbackScreen extends StatefulWidget {
   const FeedbackScreen({super.key});
@@ -81,7 +82,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                   Navigator.pushAndRemoveUntil(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const StudentLayout(initialIndex: 0),
+                      builder: (context) =>
+                          const StudentLayout(initialIndex: 0),
                     ),
                     (route) => false,
                   );
@@ -120,56 +122,29 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
+      appBar: CustomAppBar(
+        showBackButton: true,
+        actions: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: Colors.grey.shade300,
+            backgroundImage: const NetworkImage(
+              'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100',
+            ),
+            onBackgroundImageError: (exception, stackTrace) {},
+          ),
+          const SizedBox(width: 16),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
-            // AppBar Custom Header
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    icon: const Icon(LucideIcons.arrowLeft, color: Color(0xFF1A1C1E)),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                  Row(
-                    children: [
-                      Image.asset(
-                        'assets/images/um_logo.png',
-                        height: 28,
-                        errorBuilder: (context, error, stackTrace) => const Icon(
-                          LucideIcons.graduationCap,
-                          color: AppTheme.primaryRed,
-                          size: 28,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'UM SkillLink',
-                        style: GoogleFonts.manrope(
-                          color: AppTheme.primaryRed,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 18,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const CircleAvatar(
-                    radius: 18,
-                    backgroundImage: NetworkImage(
-                      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
                 child: Column(
                   children: [
                     // Service summary details card
@@ -178,7 +153,10 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFEEEFF0), width: 1),
+                        border: Border.all(
+                          color: const Color(0xFFEEEFF0),
+                          width: 1,
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -197,14 +175,23 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                               ),
                               // Verified badge label
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFBB03B).withOpacity(0.1),
+                                  color: const Color(
+                                    0xFFFBB03B,
+                                  ).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Row(
                                   children: [
-                                    const Icon(LucideIcons.award, color: Color(0xFFFBB03B), size: 10),
+                                    const Icon(
+                                      LucideIcons.award,
+                                      color: Color(0xFFFBB03B),
+                                      size: 10,
+                                    ),
                                     const SizedBox(width: 2),
                                     Text(
                                       'Verified',
@@ -242,11 +229,14 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                           // Tutor details
                           Row(
                             children: [
-                              const CircleAvatar(
+                              CircleAvatar(
                                 radius: 20,
-                                backgroundImage: NetworkImage(
+                                backgroundColor: Colors.grey.shade300,
+                                backgroundImage: const NetworkImage(
                                   'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100',
                                 ),
+                                onBackgroundImageError:
+                                    (exception, stackTrace) {},
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -317,7 +307,9 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 6),
                             child: Icon(
                               isActive ? Icons.star : Icons.star_border,
-                              color: isActive ? const Color(0xFFFBB03B) : const Color(0xFFCED4DA),
+                              color: isActive
+                                  ? const Color(0xFFFBB03B)
+                                  : const Color(0xFFCED4DA),
                               size: 40,
                             ),
                           ),
@@ -343,7 +335,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                       controller: _commentController,
                       maxLines: 4,
                       decoration: InputDecoration(
-                        hintText: 'Tell us what you liked or how the provider can improve...',
+                        hintText:
+                            'Tell us what you liked or how the provider can improve...',
                         hintStyle: GoogleFonts.manrope(
                           color: const Color(0xFFADB5BD),
                           fontSize: 12,
@@ -351,15 +344,23 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                         fillColor: Colors.white,
                         filled: true,
                         focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: AppTheme.primaryRed, width: 1.5),
+                          borderSide: const BorderSide(
+                            color: AppTheme.primaryRed,
+                            width: 1.5,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Color(0xFFEEEFF0)),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFEEEFF0),
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      style: GoogleFonts.manrope(fontSize: 13, color: const Color(0xFF495057)),
+                      style: GoogleFonts.manrope(
+                        fontSize: 13,
+                        color: const Color(0xFF495057),
+                      ),
                     ),
                     const SizedBox(height: 24),
 
@@ -384,7 +385,11 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                                   color: AppTheme.primaryRed.withOpacity(0.1),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(LucideIcons.alertTriangle, color: AppTheme.primaryRed, size: 18),
+                                child: const Icon(
+                                  LucideIcons.alertTriangle,
+                                  color: AppTheme.primaryRed,
+                                  size: 18,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -413,7 +418,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                               Switch(
                                 value: _isFileComplaintActive,
                                 activeColor: AppTheme.primaryRed,
-                                activeTrackColor: AppTheme.primaryRed.withOpacity(0.2),
+                                activeTrackColor: AppTheme.primaryRed
+                                    .withOpacity(0.2),
                                 inactiveThumbColor: const Color(0xFF7A7C80),
                                 inactiveTrackColor: const Color(0xFFE9ECEF),
                                 onChanged: (value) {
@@ -441,17 +447,25 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                             ),
                             const SizedBox(height: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFFFDCFD6)),
+                                border: Border.all(
+                                  color: const Color(0xFFFDCFD6),
+                                ),
                               ),
                               child: DropdownButtonHideUnderline(
                                 child: DropdownButton<String>(
                                   value: _selectedIssueCategory,
                                   isExpanded: true,
-                                  icon: const Icon(LucideIcons.chevronDown, color: Color(0xFF7A7C80), size: 18),
+                                  icon: const Icon(
+                                    LucideIcons.chevronDown,
+                                    color: Color(0xFF7A7C80),
+                                    size: 18,
+                                  ),
                                   style: GoogleFonts.manrope(
                                     color: const Color(0xFF495057),
                                     fontSize: 12,
@@ -464,12 +478,16 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                                       });
                                     }
                                   },
-                                  items: _issueCategories.map<DropdownMenuItem<String>>((String value) {
-                                    return DropdownMenuItem<String>(
-                                      value: value,
-                                      child: Text(value),
-                                    );
-                                  }).toList(),
+                                  items: _issueCategories
+                                      .map<DropdownMenuItem<String>>((
+                                        String value,
+                                      ) {
+                                        return DropdownMenuItem<String>(
+                                          value: value,
+                                          child: Text(value),
+                                        );
+                                      })
+                                      .toList(),
                                 ),
                               ),
                             ),

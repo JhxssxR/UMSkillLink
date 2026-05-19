@@ -2,17 +2,18 @@ import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
 import '../../models/mock_data.dart';
 import '../../components/custom_app_bar.dart';
-import 'chat_screen.dart';
+import '../student/chat_screen.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-class MessagesScreen extends StatelessWidget {
-  const MessagesScreen({super.key});
+class TutorMessagesScreen extends StatelessWidget {
+  const TutorMessagesScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: const CustomAppBar(
-        subtitle: 'Messages',
+        subtitle: 'Messages Inbox',
         centerTitle: false,
         showBackButton: false,
       ),
@@ -49,7 +50,7 @@ class MessagesScreen extends StatelessWidget {
           backgroundColor: AppTheme.primaryRed.withValues(alpha: 0.2),
           child: Text(
             name[0],
-            style: const TextStyle(
+            style: GoogleFonts.manrope(
               color: AppTheme.primaryRed,
               fontWeight: FontWeight.bold,
             ),
@@ -57,7 +58,7 @@ class MessagesScreen extends StatelessWidget {
         ),
         title: Text(
           name,
-          style: TextStyle(
+          style: GoogleFonts.manrope(
             fontWeight: isUnread ? FontWeight.bold : FontWeight.w600,
           ),
         ),
@@ -65,7 +66,7 @@ class MessagesScreen extends StatelessWidget {
           message,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
+          style: GoogleFonts.manrope(
             color: isUnread ? Colors.black87 : Colors.grey.shade600,
           ),
         ),
@@ -75,7 +76,7 @@ class MessagesScreen extends StatelessWidget {
           children: [
             Text(
               time,
-              style: TextStyle(
+              style: GoogleFonts.manrope(
                 fontSize: 12,
                 color: isUnread ? AppTheme.primaryRed : Colors.grey.shade500,
               ),

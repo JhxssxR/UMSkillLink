@@ -4,12 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
-import '../../core/demo_mode.dart';
 
-class AdminDashboardScreen extends StatelessWidget {
+class SuperAdminDashboardScreen extends StatelessWidget {
   final Function(int)? onTabChange;
 
-  const AdminDashboardScreen({super.key, this.onTabChange});
+  const SuperAdminDashboardScreen({super.key, this.onTabChange});
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +18,25 @@ class AdminDashboardScreen extends StatelessWidget {
         // Real-Time Stats Row
         Row(
           children: [
-            // Stat Card 1: Pending Tutors
+            // Stat Card 1: Total Users
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                return _StatCard(
+                  title: 'Total Active Users',
+                  value: count.toString(),
+                  trend: 'Dynamic Sync',
+                  icon: LucideIcons.users,
+                  color: AppTheme.tertiaryIndigo,
+                );
+              },
+            ),
+            const SizedBox(width: 24),
+
+            // Stat Card 2: Pending Approvals
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('tutor_applications')
@@ -28,91 +45,68 @@ class AdminDashboardScreen extends StatelessWidget {
               builder: (context, snapshot) {
                 final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
                 return _StatCard(
-                  title: 'Pending Tutors',
+                  title: 'Pending Applications',
                   value: count.toString(),
-                  trend: 'Requires Verification',
-                  icon: LucideIcons.userPlus,
+                  trend: count > 0 ? 'Action Required' : 'All Clear',
+                  icon: LucideIcons.clock,
                   color: AppTheme.secondaryGold,
                 );
               },
             ),
             const SizedBox(width: 24),
 
-            // Stat Card 2: Daily Revenue
-            DemoMode.isActive
-                ? const _StatCard(
-                    title: 'Daily Revenue',
-                    value: '₱450.00',
-                    trend: 'Estimated',
-                    icon: LucideIcons.banknote,
-                    color: Colors.green,
-                  )
-                : StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('bookings')
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      double totalRevenue = 0.0;
-                      if (snapshot.hasData) {
-                        for (var doc in snapshot.data!.docs) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          final price =
-                              double.tryParse(
-                                (data['price'] ?? '0.0').toString().replaceAll(
-                                  '₱',
-                                  '',
-                                ),
-                              ) ??
-                              0.0;
-                          totalRevenue += price * 0.05; // 5% commission
-                        }
-                      }
-                      return _StatCard(
-                        title: 'Daily Revenue',
-                        value: '₱${totalRevenue.toStringAsFixed(2)}',
-                        trend: 'Estimated',
-                        icon: LucideIcons.banknote,
-                        color: Colors.green,
-                      );
-                    },
-                  ),
+            // Stat Card 3: Listed Tutors
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('tutors')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                return _StatCard(
+                  title: 'Active Peer Tutors',
+                  value: count.toString(),
+                  trend: 'Listed Live',
+                  icon: LucideIcons.briefcase,
+                  color: Colors.green,
+                );
+              },
+            ),
             const SizedBox(width: 24),
 
-            // Stat Card 3: New Users
-            DemoMode.isActive
-                ? _StatCard(
-                    title: 'New Users',
-                    value: '12',
-                    trend: 'Platform Growth',
-                    icon: LucideIcons.users,
-                    color: AppTheme.tertiaryIndigo,
-                  )
-                : StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('users')
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      final count = snapshot.hasData
-                          ? snapshot.data!.docs.length
-                          : 0;
-                      return _StatCard(
-                        title: 'New Users',
-                        value: count.toString(),
-                        trend: 'Platform Growth',
-                        icon: LucideIcons.users,
-                        color: AppTheme.tertiaryIndigo,
-                      );
-                    },
-                  ),
-            const SizedBox(width: 24),
+            // Stat Card 4: Platform Revenue / Bookings completed
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('bookings')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final totalBookings = snapshot.hasData
+                    ? snapshot.data!.docs.length
+                    : 0;
+                double totalRevenue = 0.0;
+                if (snapshot.hasData) {
+                  for (var doc in snapshot.data!.docs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final price =
+                        double.tryParse(
+                          (data['price'] ?? '0.0').toString().replaceAll(
+                            '₱',
+                            '',
+                          ),
+                        ) ??
+                        0.0;
+                    // Suppose 5% platform fee
+                    totalRevenue += price * 0.05;
+                  }
+                }
 
-            // Stat Card 4: Pro Subscriptions
-            _StatCard(
-              title: 'Pro Subscriptions',
-              value: '89', // Placeholder
-              trend: 'Active',
-              icon: LucideIcons.star,
-              color: AppTheme.primaryRed,
+                return _StatCard(
+                  title: 'Commission Earnings (5%)',
+                  value: '₱${totalRevenue.toStringAsFixed(2)}',
+                  trend: '$totalBookings Bookings',
+                  icon: LucideIcons.banknote,
+                  color: AppTheme.primaryRed,
+                );
+              },
             ),
           ],
         ),
@@ -123,7 +117,7 @@ class AdminDashboardScreen extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Critical Review Queue
+            // Dynamic Pending Tutors list
             Expanded(
               flex: 2,
               child: Card(
@@ -140,7 +134,7 @@ class AdminDashboardScreen extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Critical Review Queue',
+                            'Pending Peer Approvals',
                             style: GoogleFonts.manrope(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -148,7 +142,7 @@ class AdminDashboardScreen extends StatelessWidget {
                           ),
                           TextButton(
                             onPressed: () => onTabChange?.call(
-                              1,
+                              2,
                             ), // index 2 is Service Approvals Screen
                             child: Text(
                               'View All',
@@ -161,14 +155,6 @@ class AdminDashboardScreen extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        'Pending Tutor Applications (Requires Verification)',
-                        style: GoogleFonts.manrope(
-                          color: Colors.grey.shade600,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
                       const Divider(),
 
                       StreamBuilder<QuerySnapshot>(
@@ -225,14 +211,14 @@ class AdminDashboardScreen extends StatelessWidget {
                                 ).format(time.toDate());
                               }
 
-                              return _ReviewItem(
+                              return _ApprovalItem(
                                 title: name,
-                                subtitle: '$college',
-                                subject: skills.isNotEmpty
-                                    ? 'Subject: ${skills.join(", ")}'
-                                    : 'Subject: General',
+                                provider: college,
+                                category: skills.isNotEmpty
+                                    ? skills.first
+                                    : 'General Skills',
                                 date: timeLabel,
-                                onReview: () => onTabChange?.call(1),
+                                onReview: () => onTabChange?.call(2),
                               );
                             }).toList(),
                           );
@@ -246,7 +232,7 @@ class AdminDashboardScreen extends StatelessWidget {
 
             const SizedBox(width: 24),
 
-            // Account Moderation & Monitoring
+            // Live Activity Feed from Firestore Audit Logs
             Expanded(
               child: Card(
                 elevation: 2,
@@ -258,42 +244,110 @@ class AdminDashboardScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Account Moderation',
-                        style: GoogleFonts.manrope(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Recent Audit Trails',
+                            style: GoogleFonts.manrope(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              LucideIcons.arrowRight,
+                              size: 18,
+                              color: AppTheme.primaryRed,
+                            ),
+                            onPressed: () =>
+                                onTabChange?.call(5), // index 5 is Audit Logs
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
-                      _ModerationItem(
-                        icon: LucideIcons.shieldAlert,
-                        label: 'Reported: Spam Profile',
-                        subtext: '@user_3429 • 10m ago',
-                        color: AppTheme.primaryRed,
+
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('audit_logs')
+                            .orderBy('timestamp', descending: true)
+                            .limit(4)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: AppTheme.primaryRed,
+                                ),
+                              ),
+                            );
+                          }
+
+                          final docs = snapshot.data?.docs ?? [];
+
+                          if (docs.isEmpty) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(vertical: 24),
+                              alignment: Alignment.center,
+                              child: Text(
+                                'No system activities logged yet.',
+                                style: GoogleFonts.manrope(
+                                  color: Colors.grey.shade500,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            );
+                          }
+
+                          return Column(
+                            children: docs.map((doc) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final action =
+                                  data['action'] ?? 'Action performed';
+                              final timeStamp = data['timestamp'] as Timestamp?;
+
+                              String timeLabel = 'Now';
+                              if (timeStamp != null) {
+                                final diff = DateTime.now().difference(
+                                  timeStamp.toDate(),
+                                );
+                                if (diff.inMinutes < 60) {
+                                  timeLabel = '${diff.inMinutes}m ago';
+                                } else if (diff.inHours < 24) {
+                                  timeLabel = '${diff.inHours}h ago';
+                                } else {
+                                  timeLabel = '${diff.inDays}d ago';
+                                }
+                              }
+
+                              IconData icon = LucideIcons.info;
+                              Color iconColor = Colors.blue;
+                              if (action.contains('Approved') ||
+                                  action.contains('tutor')) {
+                                icon = LucideIcons.checkCircle2;
+                                iconColor = Colors.green;
+                              } else if (action.contains('Settings')) {
+                                icon = LucideIcons.settings;
+                                iconColor = AppTheme.secondaryGold;
+                              } else if (action.contains('Deleted') ||
+                                  action.contains('Suspended')) {
+                                icon = LucideIcons.alertTriangle;
+                                iconColor = AppTheme.primaryRed;
+                              }
+
+                              return _ActivityItem(
+                                icon: icon,
+                                label: action,
+                                time: timeLabel,
+                                color: iconColor,
+                              );
+                            }).toList(),
+                          );
+                        },
                       ),
-                      _ModerationItem(
-                        icon: LucideIcons.alertCircle,
-                        label: 'Disputed Transaction',
-                        subtext: 'TXN-4921 • 1h ago',
-                        color: AppTheme.secondaryGold,
-                      ),
-                      const SizedBox(height: 24),
-                      const Divider(),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Transaction Monitoring',
-                        style: GoogleFonts.manrope(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _TransactionItem(
-                        from: 'Juan Dela Cruz',
-                        to: 'Maria Clara',
-                      ),
-                      _TransactionItem(from: 'Ana Maria', to: 'Jose Rizal Jr.'),
                     ],
                   ),
                 ),
@@ -335,7 +389,7 @@ class _StatCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
+                  color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: color, size: 20),
@@ -373,17 +427,17 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _ReviewItem extends StatelessWidget {
+class _ApprovalItem extends StatelessWidget {
   final String title;
-  final String subtitle;
-  final String subject;
+  final String provider;
+  final String category;
   final String date;
   final VoidCallback onReview;
 
-  const _ReviewItem({
+  const _ApprovalItem({
     required this.title,
-    required this.subtitle,
-    required this.subject,
+    required this.provider,
+    required this.category,
     required this.date,
     required this.onReview,
   });
@@ -393,7 +447,6 @@ class _ReviewItem extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16.0),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: Column(
@@ -407,19 +460,10 @@ class _ReviewItem extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  subtitle,
+                  '$provider • $category',
                   style: GoogleFonts.manrope(
                     color: Colors.grey.shade600,
                     fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subject,
-                  style: GoogleFonts.manrope(
-                    color: Colors.grey.shade800,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
@@ -432,7 +476,7 @@ class _ReviewItem extends StatelessWidget {
               fontSize: 12,
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 24),
           ElevatedButton(
             onPressed: onReview,
             style: ElevatedButton.styleFrom(
@@ -459,23 +503,23 @@ class _ReviewItem extends StatelessWidget {
   }
 }
 
-class _ModerationItem extends StatelessWidget {
+class _ActivityItem extends StatelessWidget {
   final IconData icon;
   final String label;
-  final String subtext;
+  final String time;
   final Color color;
 
-  const _ModerationItem({
+  const _ActivityItem({
     required this.icon,
     required this.label,
-    required this.subtext,
+    required this.time,
     required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
+      padding: const EdgeInsets.only(bottom: 20.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -487,62 +531,22 @@ class _ModerationItem extends StatelessWidget {
               children: [
                 Text(
                   label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.manrope(
                     fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  subtext,
+                  time,
                   style: GoogleFonts.manrope(
-                    fontSize: 11,
-                    color: Colors.grey.shade500,
+                    fontSize: 10,
+                    color: Colors.grey.shade400,
                   ),
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TransactionItem extends StatelessWidget {
-  final String from;
-  final String to;
-
-  const _TransactionItem({required this.from, required this.to});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Row(
-        children: [
-          const Icon(
-            LucideIcons.arrowRightLeft,
-            size: 14,
-            color: AppTheme.tertiaryIndigo,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                style: GoogleFonts.manrope(fontSize: 13, color: Colors.black87),
-                children: [
-                  TextSpan(
-                    text: from,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const TextSpan(text: ' to '),
-                  TextSpan(
-                    text: to,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
             ),
           ),
         ],

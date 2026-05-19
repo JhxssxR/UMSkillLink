@@ -12,11 +12,17 @@ class StudentLayout extends StatefulWidget {
   const StudentLayout({super.key, this.initialIndex = 0});
 
   @override
-  State<StudentLayout> createState() => _StudentLayoutState();
+  State<StudentLayout> createState() => StudentLayoutState();
 }
 
-class _StudentLayoutState extends State<StudentLayout> {
+class StudentLayoutState extends State<StudentLayout> {
   late int _currentIndex;
+
+  void setIndex(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
 
   @override
   void initState() {
@@ -34,51 +40,77 @@ class _StudentLayoutState extends State<StudentLayout> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _pages[_currentIndex],
+      body: IndexedStack(index: _currentIndex, children: _pages),
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(
-            top: BorderSide(color: Color(0xFFEEEFF0), width: 1),
+        height: 76,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: const Border(
+            top: BorderSide(color: Color(0xFFEEEFF0), width: 1.2),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, -4),
+            ),
+          ],
         ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          },
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-          selectedItemColor: AppTheme.primaryRed,
-          unselectedItemColor: const Color(0xFF7A7C80),
-          selectedLabelStyle: GoogleFonts.manrope(
-            fontWeight: FontWeight.bold,
-            fontSize: 11,
-          ),
-          unselectedLabelStyle: GoogleFonts.manrope(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-          ),
-          elevation: 0,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.storefront_outlined),
-              activeIcon: Icon(Icons.storefront),
-              label: 'Market',
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildNavItem(0, Icons.storefront_outlined, 'Market'),
+            _buildNavItem(1, LucideIcons.calendar, 'Bookings'),
+            _buildNavItem(2, LucideIcons.messageCircle, 'Messages'),
+            _buildNavItem(3, LucideIcons.user, 'Profile'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, IconData icon, String label) {
+    final bool isActive = _currentIndex == index;
+
+    return GestureDetector(
+      key: ValueKey('student_nav_$index'),
+      onTap: () {
+        setState(() {
+          _currentIndex = index;
+        });
+      },
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+        padding: EdgeInsets.symmetric(
+          horizontal: isActive ? 16 : 12,
+          vertical: 8,
+        ),
+        decoration: BoxDecoration(
+          color: isActive ? AppTheme.primaryRed : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isActive ? Colors.white : const Color(0xFF7A7C80),
+              size: 20,
             ),
-            BottomNavigationBarItem(
-              icon: Icon(LucideIcons.calendar),
-              label: 'Bookings',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(LucideIcons.messageCircle),
-              label: 'Messages',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(LucideIcons.user),
-              label: 'Profile',
-            ),
+            if (isActive) ...[
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: GoogleFonts.manrope(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ],
         ),
       ),

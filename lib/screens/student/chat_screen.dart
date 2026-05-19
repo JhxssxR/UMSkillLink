@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/app_theme.dart';
+import '../../components/custom_app_bar.dart';
 
 class ChatScreen extends StatefulWidget {
   final String name;
@@ -15,7 +16,7 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  
+
   late List<Map<String, dynamic>> _messages;
   bool _isDownloading = false;
   bool _isDownloaded = false;
@@ -29,22 +30,22 @@ class _ChatScreenState extends State<ChatScreen> {
   void _initializeMessages() {
     if (widget.name == 'Marco Santos' || widget.name.contains('Marco')) {
       _messages = [
+        {'isDateDivider': true, 'text': 'Today'},
         {
-          'isDateDivider': true,
-          'text': 'Today',
-        },
-        {
-          'text': 'Hi Juan! Are we still good for our Calculus II tutoring session today at 2:00 PM?',
+          'text':
+              'Hi Juan! Are we still good for our Calculus II tutoring session today at 2:00 PM?',
           'isMe': false,
           'time': '10:12 AM',
         },
         {
-          'text': 'Yes, Marco! All set. I already prepared my questions on double integrals.',
+          'text':
+              'Yes, Marco! All set. I already prepared my questions on double integrals.',
           'isMe': true,
           'time': '10:15 AM',
         },
         {
-          'text': 'Awesome! Here is a quick calculus reference sheet we can use during the session. Please download and review it beforehand.',
+          'text':
+              'Awesome! Here is a quick calculus reference sheet we can use during the session. Please download and review it beforehand.',
           'isMe': false,
           'time': '10:16 AM',
         },
@@ -55,10 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
           'isMe': false,
           'time': '10:16 AM',
         },
-        {
-          'isBookingBanner': true,
-          'text': 'Booking Confirmed: Today, 2:00 PM',
-        },
+        {'isBookingBanner': true, 'text': 'Booking Confirmed: Today, 2:00 PM'},
         {
           'text': 'Thanks, downloaded it! See you at 2:00 PM.',
           'isMe': true,
@@ -67,10 +65,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ];
     } else {
       _messages = [
-        {
-          'isDateDivider': true,
-          'text': 'Today',
-        },
+        {'isDateDivider': true, 'text': 'Today'},
         {
           'text': 'Hello! Thanks for reaching out. How can I help you today?',
           'isMe': false,
@@ -82,16 +77,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _sendMessage() {
     if (_controller.text.trim().isEmpty) return;
-    
+
     final text = _controller.text.trim();
     _controller.clear();
 
     setState(() {
-      _messages.add({
-        'text': text,
-        'isMe': true,
-        'time': _formatCurrentTime(),
-      });
+      _messages.add({'text': text, 'isMe': true, 'time': _formatCurrentTime()});
     });
 
     _scrollToBottom();
@@ -101,7 +92,8 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() {
         _messages.add({
-          'text': 'Sounds good! I am checking my dashboard now. Let\'s make sure we are ready.',
+          'text':
+              'Sounds good! I am checking my dashboard now. Let\'s make sure we are ready.',
           'isMe': false,
           'time': _formatCurrentTime(),
         });
@@ -112,7 +104,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String _formatCurrentTime() {
     final now = DateTime.now();
-    final hour = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+    final hour = now.hour > 12
+        ? now.hour - 12
+        : (now.hour == 0 ? 12 : now.hour);
     final minute = now.minute.toString().padLeft(2, '0');
     final ampm = now.hour >= 12 ? 'PM' : 'AM';
     return '$hour:$minute $ampm';
@@ -166,18 +160,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0.5,
-        leadingWidth: 40,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 8.0),
-          child: IconButton(
-            icon: const Icon(LucideIcons.arrowLeft, color: Colors.black, size: 20),
-            onPressed: () => Navigator.pop(context),
-          ),
-        ),
-        title: Row(
+      appBar: CustomAppBar(
+        centerTitle: false,
+        customTitleWidget: Row(
           children: [
             Stack(
               children: [
@@ -195,6 +180,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'
                           : 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
                     ),
+                    onBackgroundImageError: (exception, stackTrace) {},
                   ),
                 ),
                 Positioned(
@@ -239,15 +225,27 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(LucideIcons.video, color: AppTheme.primaryRed, size: 20),
+            icon: const Icon(
+              LucideIcons.video,
+              color: AppTheme.primaryRed,
+              size: 20,
+            ),
             onPressed: () {},
           ),
           IconButton(
-            icon: const Icon(LucideIcons.phone, color: AppTheme.primaryRed, size: 20),
+            icon: const Icon(
+              LucideIcons.phone,
+              color: AppTheme.primaryRed,
+              size: 20,
+            ),
             onPressed: () {},
           ),
           IconButton(
-            icon: const Icon(LucideIcons.moreVertical, color: Colors.grey, size: 20),
+            icon: const Icon(
+              LucideIcons.moreVertical,
+              color: Colors.grey,
+              size: 20,
+            ),
             onPressed: () {},
           ),
           const SizedBox(width: 8),
@@ -268,7 +266,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   return Center(
                     child: Container(
                       margin: const EdgeInsets.symmetric(vertical: 16),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFE9ECEF),
                         borderRadius: BorderRadius.circular(12),
@@ -290,7 +291,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   return Center(
                     child: Container(
                       margin: const EdgeInsets.symmetric(vertical: 20),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFFF9E6),
                         border: Border.all(
@@ -369,20 +373,27 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 child: CircleAvatar(
                   radius: 12,
+                  backgroundColor: Colors.grey.shade300,
                   backgroundImage: NetworkImage(
                     widget.name.contains('Marco')
                         ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'
                         : 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
                   ),
+                  onBackgroundImageError: (exception, stackTrace) {},
                 ),
               ),
             ],
             Flexible(
               child: Column(
-                crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment: isMe
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     decoration: BoxDecoration(
                       color: isMe ? AppTheme.primaryRed : Colors.white,
                       border: isMe
@@ -550,7 +561,9 @@ class _ChatScreenState extends State<ChatScreen> {
                               height: 14,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryRed),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  AppTheme.primaryRed,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -647,7 +660,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   decoration: const InputDecoration(
                     hintText: 'Type a message...',
-                    hintStyle: TextStyle(color: Color(0xFFADB5BD), fontSize: 13.5),
+                    hintStyle: TextStyle(
+                      color: Color(0xFFADB5BD),
+                      fontSize: 13.5,
+                    ),
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: EdgeInsets.symmetric(vertical: 10),
@@ -665,7 +681,11 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               child: IconButton(
                 padding: EdgeInsets.zero,
-                icon: const Icon(LucideIcons.send, color: Colors.white, size: 16),
+                icon: const Icon(
+                  LucideIcons.send,
+                  color: Colors.white,
+                  size: 16,
+                ),
                 onPressed: _sendMessage,
               ),
             ),

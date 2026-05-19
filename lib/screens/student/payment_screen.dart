@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/app_theme.dart';
 import '../../models/mock_data.dart';
 import '../../widgets/student_layout.dart';
+import '../../components/custom_app_bar.dart';
+import '../../services/notification_service.dart';
 
 class ConfirmPaymentScreen extends StatefulWidget {
   final String tutorName;
@@ -26,9 +30,22 @@ class ConfirmPaymentScreen extends StatefulWidget {
 }
 
 class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
-  int _selectedMethodIndex = 0; // 0: GCash, 1: Maya, 2: Campus Credit
+  String _selectedMethodId = ''; // ID of selected payment method in Firestore
+  bool _initializedSelection = false;
 
   void _processPayment() {
+    if (_selectedMethodId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please link and select a payment method before checking out.',
+          ),
+          backgroundColor: AppTheme.primaryRed,
+        ),
+      );
+      return;
+    }
+
     // Show premium loading indicator dialog
     showDialog(
       context: context,
@@ -75,14 +92,100 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
       Navigator.pop(context);
 
       // Insert the newly confirmed session into MockData bookings dynamically!
-      MockData.learnerBookings.insert(0, {
-        'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      String imagePath =
+          'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100';
+      if (widget.tutorName.contains('Sarah')) {
+        imagePath = 'assets/images/tutor_sarah.png';
+      } else if (widget.tutorName.contains('Aris')) {
+        imagePath = 'assets/images/tutor_aris.png';
+      } else if (widget.tutorName.contains('Marcus')) {
+        imagePath = 'assets/images/tutor_marcus.png';
+      } else if (widget.tutorName.contains('Elena')) {
+        imagePath =
+            'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150';
+      } else if (widget.tutorName.contains('Maria')) {
+        imagePath =
+            'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150';
+      } else if (widget.tutorName.contains('Marco')) {
+        imagePath =
+            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150';
+      }
+
+      final String bookingId = DateTime.now().millisecondsSinceEpoch.toString();
+
+      final String studentEmail = FirebaseAuth.instance.currentUser?.email ?? 'anonymous';
+      String tutorEmail = 'tutor_sarah@umindanao.edu.ph';
+      if (widget.tutorName.contains('Sarah')) {
+        tutorEmail = 'tutor_sarah@umindanao.edu.ph';
+      } else if (widget.tutorName.contains('Aris')) {
+        tutorEmail = 'tutor_aris@umindanao.edu.ph';
+      } else if (widget.tutorName.contains('Marcus')) {
+        tutorEmail = 'tutor_marcus@umindanao.edu.ph';
+      } else if (widget.tutorName.contains('Elena')) {
+        tutorEmail = 'tutor_elena@umindanao.edu.ph';
+      } else if (widget.tutorName.contains('Maria')) {
+        tutorEmail = 'tutor_maria@umindanao.edu.ph';
+      } else if (widget.tutorName.contains('Marco')) {
+        tutorEmail = 'tutor_marco@umindanao.edu.ph';
+      } else {
+        final slug = widget.tutorName.toLowerCase().replaceAll(' ', '_');
+        tutorEmail = 'tutor_$slug@umindanao.edu.ph';
+      }
+
+      final Map<String, dynamic> newBooking = {
+        'id': bookingId,
         'tutorName': widget.tutorName,
         'subject': widget.subjectName,
-        'time': '${widget.dateStr}, ${widget.timeSlot}',
+        'time': '${widget.dateStr} • ${widget.timeSlot}',
         'isUpcoming': true,
-        'status': 'Confirmed',
-      });
+        'status': 'Pending',
+        'imagePath': imagePath,
+        'studentEmail': studentEmail,
+        'tutorEmail': tutorEmail,
+      };
+
+      final Map<String, dynamic> newRequest = {
+        'id': bookingId,
+        'learnerName': 'Gabriel Reyes',
+        'degree': 'BS Information Technology',
+        'subject': widget.subjectName,
+        'time': widget.dateStr,
+        'timeDetail': widget.timeSlot,
+        'status': 'Pending',
+        'avatar':
+            'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100',
+        'verified': true,
+        'studentEmail': studentEmail,
+        'tutorEmail': tutorEmail,
+      };
+
+      MockData.learnerBookings.insert(0, newBooking);
+      MockData.tutorRequests.insert(0, newRequest);
+
+      MockData.syncBookingAdded(newBooking);
+      MockData.syncTutorRequestAdded(newRequest);
+
+      // Trigger Real-Time Notifications using Central NotificationService
+      NotificationService.sendNotification(
+        studentEmail,
+        'Payment Confirmed! 💳',
+        'Your payment of ₱${widget.totalAmount.toStringAsFixed(2)} for ${widget.subjectName} has been processed successfully.',
+        'payment_confirmed',
+      );
+
+      NotificationService.sendNotification(
+        studentEmail,
+        'Booking Created! 📅',
+        'Your session request for ${widget.subjectName} with ${widget.tutorName} on ${widget.dateStr} at ${widget.timeSlot} is now pending approval.',
+        'booking_created',
+      );
+
+      NotificationService.sendNotification(
+        tutorEmail,
+        'New Booking Request! 🔔',
+        'Gabriel Reyes has requested a session for ${widget.subjectName} on ${widget.dateStr} at ${widget.timeSlot}.',
+        'booking_request',
+      );
 
       // Show Payment Success Modal
       showDialog(
@@ -90,7 +193,9 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
         barrierDismissible: false,
         builder: (context) => AlertDialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -138,7 +243,8 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const StudentLayout(initialIndex: 1),
+                        builder: (context) =>
+                            const StudentLayout(initialIndex: 1),
                       ),
                       (route) => false,
                     );
@@ -168,43 +274,479 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
     });
   }
 
+  void _showAddPaymentMethodSheet() {
+    String selectedProvider = 'GCash';
+    final TextEditingController numberController = TextEditingController();
+    bool setAsDefault = true;
+    final formKey = GlobalKey<FormState>();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 24,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Link Payment Method',
+                          style: GoogleFonts.manrope(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.neutralColor,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(LucideIcons.x, size: 20),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Select Provider',
+                      style: GoogleFonts.manrope(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              setModalState(() {
+                                selectedProvider = 'GCash';
+                              });
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 16,
+                                horizontal: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: selectedProvider == 'GCash'
+                                    ? const Color(0xFF007DFE)
+                                    : Colors.white,
+                                border: Border.all(
+                                  color: selectedProvider == 'GCash'
+                                      ? const Color(0xFF005CFF)
+                                      : Colors.grey.shade300,
+                                  width: 2.5,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: selectedProvider == 'GCash'
+                                    ? [
+                                        BoxShadow(
+                                          color: const Color(
+                                            0xFF007DFE,
+                                          ).withOpacity(0.3),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ]
+                                    : [],
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        width: 32,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: selectedProvider == 'GCash'
+                                              ? Colors.white
+                                              : const Color(0xFF007DFE),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            'G',
+                                            style: GoogleFonts.outfit(
+                                              color: selectedProvider == 'GCash'
+                                                  ? const Color(0xFF007DFE)
+                                                  : Colors.white,
+                                              fontWeight: FontWeight.w900,
+                                              fontSize: 18,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Icon(
+                                        LucideIcons.wifi,
+                                        color: selectedProvider == 'GCash'
+                                            ? Colors.white
+                                            : const Color(0xFF007DFE),
+                                        size: 16,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'GCash',
+                                    style: GoogleFonts.manrope(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 16,
+                                      color: selectedProvider == 'GCash'
+                                          ? Colors.white
+                                          : const Color(0xFF007DFE),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              setModalState(() {
+                                selectedProvider = 'Maya';
+                              });
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 16,
+                                horizontal: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: selectedProvider == 'Maya'
+                                    ? const Color(0xFF0C1013)
+                                    : Colors.white,
+                                border: Border.all(
+                                  color: selectedProvider == 'Maya'
+                                      ? const Color(0xFF00F59B)
+                                      : Colors.grey.shade300,
+                                  width: 2.5,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: selectedProvider == 'Maya'
+                                    ? [
+                                        BoxShadow(
+                                          color: const Color(
+                                            0xFF00F59B,
+                                          ).withOpacity(0.2),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ]
+                                    : [],
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: selectedProvider == 'Maya'
+                                          ? const Color(0xFF1E293B)
+                                          : const Color(0xFFF1F3F5),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.blur_on_rounded,
+                                        color: Color(0xFF00F59B),
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'maya',
+                                    style: GoogleFonts.outfit(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 16,
+                                      letterSpacing: -0.5,
+                                      color: selectedProvider == 'Maya'
+                                          ? const Color(0xFF00F59B)
+                                          : const Color(0xFF0C1013),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Mobile Number',
+                      style: GoogleFonts.manrope(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: numberController,
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(
+                        hintText: 'e.g., 09171234567',
+                        hintStyle: GoogleFonts.manrope(
+                          color: Colors.grey.shade400,
+                        ),
+                        prefixIcon: const Icon(LucideIcons.phone, size: 18),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: AppTheme.primaryRed,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please enter mobile number';
+                        }
+                        final clean = value.replaceAll(RegExp(r'\D'), '');
+                        if (clean.length != 11 || !clean.startsWith('09')) {
+                          return 'Must be an 11-digit number starting with 09';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Set as Default Method',
+                          style: GoogleFonts.manrope(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                        Switch(
+                          value: setAsDefault,
+                          activeColor: AppTheme.primaryRed,
+                          onChanged: (val) {
+                            setModalState(() {
+                              setAsDefault = val;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          if (formKey.currentState?.validate() ?? false) {
+                            final number = numberController.text.trim();
+                            Navigator.pop(context);
+                            await _addPaymentMethod(
+                              selectedProvider,
+                              number,
+                              setAsDefault,
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryRed,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          'Link Account',
+                          style: GoogleFonts.manrope(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _addPaymentMethod(
+    String provider,
+    String number,
+    bool isDefault,
+  ) async {
+    final email = FirebaseAuth.instance.currentUser?.email ?? 'anonymous';
+    try {
+      final ref = FirebaseFirestore.instance
+          .collection('users')
+          .doc(email)
+          .collection('payment_methods');
+      final existingDocs = await ref.get();
+      final bool forceDefault = existingDocs.docs.isEmpty || isDefault;
+
+      final batch = FirebaseFirestore.instance.batch();
+
+      if (forceDefault) {
+        for (var doc in existingDocs.docs) {
+          batch.update(doc.reference, {'isPrimary': false});
+        }
+      }
+
+      final newDocRef = ref.doc();
+      batch.set(newDocRef, {
+        'id': newDocRef.id,
+        'type': provider,
+        'number': number,
+        'isPrimary': forceDefault,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      await batch.commit();
+
+      setState(() {
+        _selectedMethodId = newDocRef.id;
+        _initializedSelection = true;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Linked $provider account successfully!'),
+            backgroundColor: const Color(0xFF137333),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error linking payment method: $e');
+    }
+  }
+
+  String _maskNumber(String raw) {
+    if (raw.length < 7) return raw;
+    final prefix = raw.substring(0, 4);
+    final suffix = raw.substring(raw.length - 3);
+    return '$prefix • • • $suffix';
+  }
+
+  Widget _buildEmptyPaymentMethodsCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.primaryRed.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            LucideIcons.alertTriangle,
+            color: AppTheme.primaryRed.withOpacity(0.8),
+            size: 36,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No Payment Methods Linked',
+            style: GoogleFonts.manrope(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.neutralColor,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'You need to link a GCash or Maya account before you can proceed with checkout.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.manrope(
+              fontSize: 12,
+              color: Colors.grey.shade600,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _showAddPaymentMethodSheet,
+              icon: const Icon(LucideIcons.plus, size: 16),
+              label: const Text('Link GCash or Maya Account'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryRed,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
+      appBar: CustomAppBar(
+        title: 'Confirm Payment',
+        centerTitle: false,
+        actions: [
+          IconButton(
+            icon: const Icon(LucideIcons.user, color: Color(0xFF7A7C80)),
+            onPressed: () {},
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
-            // AppBar
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    icon: const Icon(LucideIcons.arrowLeft, color: Color(0xFF1A1C1E)),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                  Text(
-                    'Confirm Payment',
-                    style: GoogleFonts.manrope(
-                      color: const Color(0xFF1A1C1E),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(LucideIcons.user, color: Color(0xFF7A7C80)),
-                    onPressed: () {},
-                  ),
-                ],
-              ),
-            ),
-
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -214,7 +756,10 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFEEEFF0), width: 1),
+                        border: Border.all(
+                          color: const Color(0xFFEEEFF0),
+                          width: 1,
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -233,14 +778,23 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
                               ),
                               // Verified badge label
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFBB03B).withOpacity(0.1),
+                                  color: const Color(
+                                    0xFFFBB03B,
+                                  ).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Row(
                                   children: [
-                                    const Icon(LucideIcons.award, color: Color(0xFFFBB03B), size: 10),
+                                    const Icon(
+                                      LucideIcons.award,
+                                      color: Color(0xFFFBB03B),
+                                      size: 10,
+                                    ),
                                     const SizedBox(width: 2),
                                     Text(
                                       'Verified',
@@ -269,11 +823,14 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
                           // Tutor Section
                           Row(
                             children: [
-                              const CircleAvatar(
+                              CircleAvatar(
                                 radius: 20,
-                                backgroundImage: NetworkImage(
+                                backgroundColor: Colors.grey.shade300,
+                                backgroundImage: const NetworkImage(
                                   'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100',
                                 ),
+                                onBackgroundImageError:
+                                    (exception, stackTrace) {},
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -309,7 +866,11 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
                               Expanded(
                                 child: Row(
                                   children: [
-                                    const Icon(LucideIcons.calendar, color: AppTheme.primaryRed, size: 16),
+                                    const Icon(
+                                      LucideIcons.calendar,
+                                      color: AppTheme.primaryRed,
+                                      size: 16,
+                                    ),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
@@ -328,7 +889,11 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
                               Expanded(
                                 child: Row(
                                   children: [
-                                    const Icon(LucideIcons.clock, color: AppTheme.primaryRed, size: 16),
+                                    const Icon(
+                                      LucideIcons.clock,
+                                      color: AppTheme.primaryRed,
+                                      size: 16,
+                                    ),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
@@ -388,47 +953,98 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
                             color: const Color(0xFF1A1C1E),
                           ),
                         ),
-                        Text(
-                          'Add New',
-                          style: GoogleFonts.manrope(
-                            color: AppTheme.primaryRed,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                        GestureDetector(
+                          onTap: _showAddPaymentMethodSheet,
+                          child: Text(
+                            'Add New',
+                            style: GoogleFonts.manrope(
+                              color: AppTheme.primaryRed,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
 
-                    // Payment option cards
-                    _buildPaymentMethodItem(
-                      index: 0,
-                      title: 'GCash',
-                      sub: '0917 • • • 123',
-                      iconData: LucideIcons.wallet,
-                      iconBgColor: const Color(0xFFE8F0FE),
-                      iconColor: const Color(0xFF1A73E8),
-                    ),
-                    const SizedBox(height: 12),
+                    // StreamBuilder for linked GCash/Maya accounts
+                    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(
+                            FirebaseAuth.instance.currentUser?.email ??
+                                'anonymous',
+                          )
+                          .collection('payment_methods')
+                          .orderBy('createdAt', descending: true)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24),
+                              child: CircularProgressIndicator(
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  AppTheme.primaryRed,
+                                ),
+                              ),
+                            ),
+                          );
+                        }
 
-                    _buildPaymentMethodItem(
-                      index: 1,
-                      title: 'Maya',
-                      sub: '0917 • • • 123',
-                      iconData: LucideIcons.phone,
-                      iconBgColor: const Color(0xFFE6F4EA),
-                      iconColor: const Color(0xFF137333),
-                    ),
-                    const SizedBox(height: 12),
+                        final docs = snapshot.data?.docs ?? [];
+                        final methods = docs.map((doc) => doc.data()).toList();
 
-                    _buildPaymentMethodItem(
-                      index: 2,
-                      title: 'Campus Credit',
-                      sub: 'Balance: ₱1,240.00',
-                      iconData: LucideIcons.graduationCap,
-                      iconBgColor: const Color(0xFFFFF0F2),
-                      iconColor: AppTheme.primaryRed,
-                      hasStudentTag: true,
+                        // Sort so primary is on top
+                        methods.sort((a, b) {
+                          final aPrimary = a['isPrimary'] == true ? 1 : 0;
+                          final bPrimary = b['isPrimary'] == true ? 1 : 0;
+                          return bPrimary.compareTo(aPrimary);
+                        });
+
+                        if (methods.isEmpty) {
+                          return _buildEmptyPaymentMethodsCard();
+                        }
+
+                        // Initialize selection if not set
+                        if (!_initializedSelection && methods.isNotEmpty) {
+                          final primaryIndex = methods.indexWhere(
+                            (m) => m['isPrimary'] == true,
+                          );
+                          final defaultMethod = primaryIndex != -1
+                              ? methods[primaryIndex]
+                              : methods[0];
+                          _selectedMethodId = defaultMethod['id'] ?? '';
+                          _initializedSelection = true;
+                        }
+
+                        return Column(
+                          children: methods.map((method) {
+                            final mId = method['id'] ?? '';
+                            final mType = method['type'] ?? 'GCash';
+                            final isGCash = mType == 'GCash';
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _buildPaymentMethodItem(
+                                methodId: mId,
+                                title: mType,
+                                sub: _maskNumber(method['number'] ?? ''),
+                                iconData: isGCash
+                                    ? LucideIcons.wallet
+                                    : LucideIcons.phone,
+                                iconBgColor: isGCash
+                                    ? const Color(0xFFE8F0FE)
+                                    : const Color(0xFFE6F4EA),
+                                iconColor: isGCash
+                                    ? const Color(0xFF1A73E8)
+                                    : const Color(0xFF137333),
+                              ),
+                            );
+                          }).toList(),
+                        );
+                      },
                     ),
                     const SizedBox(height: 24),
 
@@ -441,7 +1057,11 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(LucideIcons.shieldAlert, color: Color(0xFFFBB03B), size: 18),
+                          const Icon(
+                            LucideIcons.shieldAlert,
+                            color: Color(0xFFFBB03B),
+                            size: 18,
+                          ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
@@ -503,7 +1123,7 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
   }
 
   Widget _buildPaymentMethodItem({
-    required int index,
+    required String methodId,
     required String title,
     required String sub,
     required IconData iconData,
@@ -511,11 +1131,11 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
     required Color iconColor,
     bool hasStudentTag = false,
   }) {
-    final isSelected = _selectedMethodIndex == index;
+    final isSelected = _selectedMethodId == methodId;
     return GestureDetector(
       onTap: () {
         setState(() {
-          _selectedMethodIndex = index;
+          _selectedMethodId = methodId;
         });
       },
       child: Container(
@@ -537,15 +1157,7 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
         ),
         child: Row(
           children: [
-            // Icon
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: iconBgColor,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(iconData, color: iconColor, size: 20),
-            ),
+            _buildBrandLogoBadge(title),
             const SizedBox(width: 14),
             // Details
             Expanded(
@@ -565,28 +1177,31 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
                       if (hasStudentTag) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFBB03B).withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(4),
+                            color: const Color(0xFFE8F0FE),
+                            borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            'STUDENT ONLY',
+                            'Student Rate',
                             style: GoogleFonts.manrope(
-                              color: const Color(0xFFD97706),
-                              fontSize: 7,
-                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF1A73E8),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
                       ],
                     ],
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
                     sub,
                     style: GoogleFonts.manrope(
-                      fontSize: 11,
+                      fontSize: 12,
                       color: const Color(0xFF7A7C80),
                       fontWeight: FontWeight.w500,
                     ),
@@ -594,14 +1209,17 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
                 ],
               ),
             ),
-            // Radio circle indicator
+            const SizedBox(width: 12),
+            // Selection indicator
             Container(
               height: 20,
               width: 20,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: isSelected ? AppTheme.primaryRed : const Color(0xFFCED4DA),
+                  color: isSelected
+                      ? AppTheme.primaryRed
+                      : const Color(0xFFCED4DA),
                   width: 2,
                 ),
               ),
@@ -622,5 +1240,94 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildBrandLogoBadge(String type) {
+    final isGCash = type.toLowerCase() == 'gcash';
+    if (isGCash) {
+      return Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: const Color(0xFF007DFE),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 14,
+                    height: 14,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'G',
+                        style: TextStyle(
+                          color: Color(0xFF007DFE),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 9,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 1),
+                  const Icon(LucideIcons.wifi, color: Colors.white, size: 9),
+                ],
+              ),
+              const SizedBox(height: 2),
+              const Text(
+                'GCash',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 7.5,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      return Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: const Color(0xFF0C1013),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF1E293B), width: 1),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.blur_on_rounded,
+                color: Color(0xFF00F59B),
+                size: 14,
+              ),
+              const SizedBox(height: 1),
+              Text(
+                'maya',
+                style: GoogleFonts.outfit(
+                  color: Color(0xFF00F59B),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 10,
+                  letterSpacing: -0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 }
