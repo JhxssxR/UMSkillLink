@@ -25,6 +25,146 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  void _showTermsOfService(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            const Icon(LucideIcons.fileText, color: AppTheme.primaryRed),
+            const SizedBox(width: 10),
+            Text(
+              'Terms of Service',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade900,
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Last updated: May 2026\n',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                    fontSize: 12,
+                  ),
+                ),
+                Text(
+                  'Welcome to UM SkillLink, the official peer tutoring and skills sharing platform for students at the University of Mindanao. By accessing or using our application, you agree to comply with and be bound by the following terms:\n\n'
+                  '1. Eligibility\n'
+                  'You must be a currently enrolled student at the University of Mindanao with an active "@umindanao.edu.ph" email account to register and use the services.\n\n'
+                  '2. Code of Conduct\n'
+                  'Users agree to behave professionally, respectfully, and ethically at all times during peer-to-peer tutor sessions and messaging.\n\n'
+                  '3. Academic Integrity\n'
+                  'UM SkillLink is intended for academic support, collaboration, and learning. Helping others cheat, plagiarize, or complete assignments on their behalf is strictly prohibited and subject to University disciplinary actions.\n\n'
+                  '4. Services & Rates\n'
+                  'All tutoring sessions, booking rates, and transactions must comply with UM guidelines. Commission rates are managed by authorized platform administrators.\n\n'
+                  '5. Termination\n'
+                  'UM SkillLink administration reserves the right to suspend or terminate user accounts that violate these terms or University policies.',
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    height: 1.5,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.primaryRed,
+              textStyle: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPrivacyPolicy(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            const Icon(LucideIcons.shieldCheck, color: AppTheme.primaryRed),
+            const SizedBox(width: 10),
+            Text(
+              'Privacy Policy',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade900,
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Last updated: May 2026\n',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                    fontSize: 12,
+                  ),
+                ),
+                Text(
+                  'At UM SkillLink, we take the privacy of our peer tutors and students very seriously. This Privacy Policy details how we handle information inside our application:\n\n'
+                  '1. Information Collection\n'
+                  'We access and save authentication data (such as email, name, and profile photos) provided during UM Google Single Sign-In to verify your active enrollment.\n\n'
+                  '2. Usage & Records\n'
+                  'Session, application requests, bookings, transaction details, and system events are saved strictly to enable academic tutoring logistics and administrator monitoring.\n\n'
+                  '3. Data Protection\n'
+                  'All database and authentication layers are securely backed by Firebase Cloud Infrastructure. Information is never shared with third parties or external marketing networks.\n\n'
+                  '4. Your Rights\n'
+                  'Students and tutors can request their account deletion or application logs by writing to our administration support portal at any time.',
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    height: 1.5,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.primaryRed,
+              textStyle: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -202,25 +342,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SuperAdminPortal(),
-                        ),
-                      );
-                    },
-                    child: const Text(
-                      'Access Super Admin Portal',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 13,
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: 64),
 
                   // Footer Links
@@ -228,7 +349,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       TextButton(
-                        onPressed: () {},
+                        onPressed: () => _showTermsOfService(context),
                         child: const Text(
                           'Terms of Service',
                           style: TextStyle(
@@ -239,7 +360,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const Text('•', style: TextStyle(color: Colors.grey)),
                       TextButton(
-                        onPressed: () {},
+                        onPressed: () => _showPrivacyPolicy(context),
                         child: const Text(
                           'Privacy Policy',
                           style: TextStyle(
