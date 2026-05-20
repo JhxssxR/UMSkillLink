@@ -52,7 +52,12 @@ class ServiceDetailsScreen extends StatelessWidget {
       stream: FirebaseFirestore.instance.collection('users').doc(email).snapshots(),
       builder: (context, snapshot) {
         String tutorAbout = tutor['about'] ?? 'Third-year Engineering student with a passion for deconstructing complex structural concepts. I believe peer tutoring is the most effective way to master challenging STEM subjects while building university camaraderie.';
-        List<String> tutorExpertise = ['Calculus II', 'Physics', 'Eng. Mech.'];
+        List<String> tutorExpertise = [];
+        if (tutor['tutorExpertise'] != null) {
+          tutorExpertise = List<String>.from(tutor['tutorExpertise']);
+        } else if (tutor['expertise'] != null) {
+          tutorExpertise = List<String>.from(tutor['expertise']);
+        }
         String tutorAvailabilityDays = 'Mon - Fri';
         String tutorAvailabilityHours = 'After 5:00 PM';
         String tutorAvailabilityType = 'ON-CAMPUS ONLY';

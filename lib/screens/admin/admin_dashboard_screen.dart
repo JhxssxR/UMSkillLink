@@ -37,7 +37,7 @@ class AdminDashboardScreen extends StatelessWidget {
             ),
             const SizedBox(width: 24),
 
-            // Stat Card 2: Daily Revenue
+            // Stat Card 2: Overall Revenue
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('transactions')
@@ -45,25 +45,14 @@ class AdminDashboardScreen extends StatelessWidget {
               builder: (context, snapshot) {
                 double totalRevenue = 0.0;
                 if (snapshot.hasData) {
-                  final now = DateTime.now();
-                  final today = DateTime(now.year, now.month, now.day);
-                  
                   for (var doc in snapshot.data!.docs) {
                     final data = doc.data() as Map<String, dynamic>;
-                    
-                    // Filter for today's transactions
-                    final timestamp = (data['date'] ?? data['timestamp']) as Timestamp?;
-                    if (timestamp != null) {
-                      final date = timestamp.toDate();
-                      if (date.isAfter(today)) {
-                        final amount = (data['amount'] ?? 0).toDouble();
-                        totalRevenue += amount;
-                      }
-                    }
+                    final amount = (data['amount'] ?? 0).toDouble();
+                    totalRevenue += amount;
                   }
                 }
                 return _StatCard(
-                  title: 'Daily Revenue',
+                  title: 'Overall Revenue',
                   value: '₱${totalRevenue.toStringAsFixed(2)}',
                   trend: 'Real-time',
                   icon: LucideIcons.banknote,

@@ -206,8 +206,8 @@ class _SuperAdminPortalState extends State<SuperAdminPortal> {
                         ),
                       );
 
-                      // Add to Firestore
-                      await FirebaseFirestore.instance.collection('users').add({
+                      // Add to Firestore using email as doc ID for consistency and notifications
+                      await FirebaseFirestore.instance.collection('users').doc(email).set({
                         'name': name,
                         'email': email,
                         'role': role,

@@ -277,9 +277,13 @@ class _TutorApplicationScreenState extends State<TutorApplicationScreen> {
       });
 
       // Notify Admin about the new application
+      final applicantName = _nameController.text.trim().isNotEmpty 
+          ? _nameController.text.trim() 
+          : (user?.displayName ?? 'A new user');
+          
       await NotificationService.sendAdminNotification(
         'New Tutor Application 📝',
-        '${_nameController.text.trim()} has submitted a new peer tutor application for review.',
+        '$applicantName has submitted a new peer tutor application for review.',
         'tutor_application',
       );
 

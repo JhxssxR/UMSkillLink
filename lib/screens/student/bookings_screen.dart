@@ -27,7 +27,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
   void _showEndSessionConfirmation(BuildContext context, Map<String, dynamic> booking) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           'End Session',
@@ -39,12 +39,12 @@ class _BookingsScreenState extends State<BookingsScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: Text('Cancel', style: GoogleFonts.manrope(color: Colors.grey, fontWeight: FontWeight.bold)),
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
               _processMutualEnd(context, booking);
             },
             style: ElevatedButton.styleFrom(
@@ -64,52 +64,62 @@ class _BookingsScreenState extends State<BookingsScreen> {
     final String studentEmail = FirebaseAuth.instance.currentUser?.email ?? '';
     final String tutorEmail = booking['tutorEmail'] ?? '';
 
-    if (studentEmail.isNotEmpty && tutorEmail.isNotEmpty) {
-      // Show loading overlay
+    if (studentEmail.isEmpty || tutorEmail.isEmpty) return;
+
+    // Show loading overlay
+    if (context.mounted) {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
+        useRootNavigator: true,
+        builder: (dialogContext) => const Center(
           child: CircularProgressIndicator(color: AppTheme.primaryRed),
         ),
       );
+    }
 
-      try {
-        // 1. Finalize the session immediately (Unpend money)
-        await MockData.finalizeSession(requestId, tutorEmail);
+    bool success = false;
 
-        // 2. Notify Tutor
-        if (tutorEmail.isNotEmpty) {
-          await NotificationService.sendNotification(
-            tutorEmail,
-            'Session Completed! ✅',
-            'Student has confirmed the end of the session for ${booking['subject']}. Funds have been released.',
-            'session_completed',
-          );
-        }
-
-        // 3. Close loading dialog safely
-        if (context.mounted) {
-          Navigator.of(context, rootNavigator: true).pop(); // Force pop from root to ensure dialog closes
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Session completed! Money has been released to the tutor.'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        debugPrint('Error during session finalization: $e');
-        if (context.mounted) {
-          Navigator.of(context, rootNavigator: true).pop(); // Close dialog on error too
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: $e'),
-              backgroundColor: AppTheme.primaryRed,
-            ),
-          );
-        }
+    try {
+      // 1. Finalize the session immediately (Unpend money)
+      await MockData.finalizeSession(requestId, tutorEmail).timeout(const Duration(seconds: 10));
+      success = true;
+    } catch (e) {
+      debugPrint('Error during session finalization: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Update failed: $e'),
+            backgroundColor: AppTheme.primaryRed,
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
+    } finally {
+      // ALWAYS close loading dialog by popping from root navigator
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+
+    if (success) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Session completed! Money has been released to the tutor.'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+
+      // 2. Notify Tutor (In background, don't block UI)
+      NotificationService.sendNotification(
+        tutorEmail,
+        'Session Completed! ✅',
+        'Student has confirmed the end of the session for ${booking['subject']}. Funds have been released.',
+        'session_completed',
+      );
     }
   }
 

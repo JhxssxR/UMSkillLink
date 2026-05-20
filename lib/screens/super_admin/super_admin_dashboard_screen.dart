@@ -124,9 +124,9 @@ class SuperAdminDashboardScreen extends StatelessWidget {
                         }
 
                         return _StatCard(
-                          title: 'Commission Earnings (Mixed Rate)',
+                          title: 'Overall Revenue',
                           value: '₱${totalRevenue.toStringAsFixed(2)}',
-                          trend: '$totalBookings Bookings',
+                          trend: 'All-time Platform Earnings',
                           icon: LucideIcons.banknote,
                           color: AppTheme.primaryRed,
                         );

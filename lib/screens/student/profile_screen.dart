@@ -3985,6 +3985,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           icon: const Icon(LucideIcons.chevronDown, size: 18),
                           items: const [
                             DropdownMenuItem(
+                              value: 'NOT SET',
+                              child: Text('NOT SET'),
+                            ),
+                            DropdownMenuItem(
                               value: 'ON-CAMPUS ONLY',
                               child: Text('ON-CAMPUS ONLY'),
                             ),

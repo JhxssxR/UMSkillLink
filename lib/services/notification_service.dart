@@ -26,11 +26,20 @@ class NotificationService {
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
-          .where('role', whereIn: ['admin', 'superadmin'])
+          .where('role', whereIn: ['admin', 'superadmin', 'Admin', 'SuperAdmin', 'Super Admin'])
           .get();
 
+      if (snapshot.docs.isEmpty) {
+        // Fallback: If no users have the role, try to notify the known admin email
+        await sendNotification('j.antukan.549054@umindanao.edu.ph', title, message, type);
+        return;
+      }
+
       for (var doc in snapshot.docs) {
-        await sendNotification(doc.id, title, message, type);
+        // Use the email field if it exists, otherwise use doc.id
+        final data = doc.data() as Map<String, dynamic>;
+        final String targetEmail = data['email'] ?? doc.id;
+        await sendNotification(targetEmail, title, message, type);
       }
     } catch (e) {
       print('Error sending admin notification: $e');

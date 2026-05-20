@@ -373,6 +373,7 @@ class MockData {
       }
     } catch (e) {
       debugPrint('Error finalizing session: $e');
+      rethrow;
     }
   }
 

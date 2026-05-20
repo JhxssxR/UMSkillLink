@@ -16,183 +16,264 @@ class TransactionsScreen extends StatefulWidget {
 class _TransactionsScreenState extends State<TransactionsScreen> {
   String _selectedStatusFilter =
       'All'; // 'All', 'Completed', 'Pending', 'Cancelled', 'Failed'
+  int _currentPage = 0;
+  static const int _pageSize = 10;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Filter Controls
-        Row(
-          children: [
-            const Icon(LucideIcons.filter, size: 20, color: Colors.grey),
-            const SizedBox(width: 16),
-            GestureDetector(
-              onTap: () => setState(() => _selectedStatusFilter = 'All'),
-              child: _FilterChip(
-                label: 'All Transactions',
-                isActive: _selectedStatusFilter == 'All',
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => setState(() => _selectedStatusFilter = 'Completed'),
-              child: _FilterChip(
-                label: 'Completed',
-                isActive: _selectedStatusFilter == 'Completed',
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => setState(() => _selectedStatusFilter = 'Pending'),
-              child: _FilterChip(
-                label: 'Pending',
-                isActive: _selectedStatusFilter == 'Pending',
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => setState(() => _selectedStatusFilter = 'Cancelled'),
-              child: _FilterChip(
-                label: 'Cancelled',
-                isActive: _selectedStatusFilter == 'Cancelled',
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 32),
-
-        Card(
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: _buildLiveTransactionsTable(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMockTransactionsTable() {
-    final List<Map<String, dynamic>> mockTransactions = [
-      {
-        'id': 'TXN-001',
-        'date': DateTime.now().subtract(const Duration(hours: 2)),
-        'amount': 450.00,
-        'type': 'Booking Payment',
-        'status': 'Completed',
-        'user': 'John Doe',
-      },
-      {
-        'id': 'TXN-002',
-        'date': DateTime.now().subtract(const Duration(days: 1)),
-        'amount': 1200.00,
-        'type': 'Subscription Renewal',
-        'status': 'Completed',
-        'user': 'Jane Smith',
-      },
-      {
-        'id': 'TXN-003',
-        'date': DateTime.now().subtract(const Duration(days: 2)),
-        'amount': 300.00,
-        'type': 'Booking Payment',
-        'status': 'Pending',
-        'user': 'Mark Johnson',
-      },
-      {
-        'id': 'TXN-004',
-        'date': DateTime.now().subtract(const Duration(days: 3)),
-        'amount': 850.00,
-        'type': 'Withdrawal',
-        'status': 'Failed',
-        'user': 'Sarah Connor',
-      },
-    ];
-
-    final filteredTxns = mockTransactions.where((t) {
-      if (_selectedStatusFilter != 'All' &&
-          t['status'] != _selectedStatusFilter)
-        return false;
-      return true;
-    }).toList();
-
-    return _buildDataTable(filteredTxns);
-  }
-
-  Widget _buildLiveTransactionsTable() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('transactions')
           .orderBy('date', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(48.0),
-            child: Center(
-              child: CircularProgressIndicator(color: AppTheme.primaryRed),
-            ),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return Padding(
-            padding: const EdgeInsets.all(32.0),
-            child: Center(
-              child: Text(
-                'Error loading transactions',
-                style: GoogleFonts.manrope(
-                  color: AppTheme.primaryRed,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          );
-        }
-
         final docs = snapshot.data?.docs ?? [];
+        final allTransactions = docs.map((doc) {
+          final data = Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
+          data['id'] = doc.id;
+          data['date'] = (data['date'] as Timestamp?)?.toDate() ?? DateTime.now();
+          return data;
+        }).toList();
 
-        final filteredTxns = docs
-            .map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              data['id'] = doc.id;
-              data['date'] =
-                  (data['date'] as Timestamp?)?.toDate() ?? DateTime.now();
-              return data;
-            })
-            .where((t) {
-              if (_selectedStatusFilter != 'All' &&
-                  t['status'] != _selectedStatusFilter)
-                return false;
-              return true;
-            })
-            .toList();
-
-        if (filteredTxns.isEmpty) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(48.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Icon(LucideIcons.receipt, size: 48, color: Colors.grey),
-                const SizedBox(height: 16),
                 Text(
-                  'No transactions found',
+                  'Transactions',
                   style: GoogleFonts.manrope(
-                    color: Colors.grey.shade600,
+                    fontSize: 28,
                     fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(LucideIcons.download),
+                  label: const Text('Export Report'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryRed,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ],
             ),
-          );
-        }
+            const SizedBox(height: 32),
+            // Filter Controls
+            Row(
+              children: [
+                const Icon(LucideIcons.filter, size: 20, color: Colors.grey),
+                const SizedBox(width: 16),
+                GestureDetector(
+                  onTap: () => setState(() {
+                    _selectedStatusFilter = 'All';
+                    _currentPage = 0;
+                  }),
+                  child: _FilterChip(
+                    label: 'All Transactions',
+                    isActive: _selectedStatusFilter == 'All',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => setState(() {
+                    _selectedStatusFilter = 'Completed';
+                    _currentPage = 0;
+                  }),
+                  child: _FilterChip(
+                    label: 'Completed',
+                    isActive: _selectedStatusFilter == 'Completed',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => setState(() {
+                    _selectedStatusFilter = 'Pending';
+                    _currentPage = 0;
+                  }),
+                  child: _FilterChip(
+                    label: 'Pending',
+                    isActive: _selectedStatusFilter == 'Pending',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => setState(() {
+                    _selectedStatusFilter = 'Cancelled';
+                    _currentPage = 0;
+                  }),
+                  child: _FilterChip(
+                    label: 'Cancelled',
+                    isActive: _selectedStatusFilter == 'Cancelled',
+                  ),
+                ),
+              ],
+            ),
 
-        return _buildDataTable(filteredTxns);
+            const SizedBox(height: 32),
+
+            Card(
+              elevation: 2,
+              clipBehavior: Clip.antiAlias,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: _buildTableContent(snapshot, allTransactions),
+            ),
+          ],
+        );
       },
+    );
+  }
+
+  Widget _buildTableContent(AsyncSnapshot<QuerySnapshot> snapshot, List<Map<String, dynamic>> allTransactions) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Padding(
+        padding: EdgeInsets.all(48.0),
+        child: Center(
+          child: CircularProgressIndicator(color: AppTheme.primaryRed),
+        ),
+      );
+    }
+
+    if (snapshot.hasError) {
+      return Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Center(
+          child: Text(
+            'Error loading transactions',
+            style: GoogleFonts.manrope(
+              color: AppTheme.primaryRed,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final filteredTxns = allTransactions.where((t) {
+      if (_selectedStatusFilter != 'All' && t['status'] != _selectedStatusFilter) return false;
+      return true;
+    }).toList();
+
+    if (filteredTxns.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(48.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(LucideIcons.receipt, size: 48, color: Colors.grey),
+            const SizedBox(height: 16),
+            Text(
+              'No transactions found',
+              style: GoogleFonts.manrope(
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final int totalItems = filteredTxns.length;
+    final int totalPages = (totalItems / _pageSize).ceil();
+
+    if (_currentPage >= totalPages && totalPages > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() => _currentPage = totalPages - 1);
+      });
+    }
+
+    final int startIndex = _currentPage * _pageSize;
+    final int endIndex = (startIndex + _pageSize < totalItems) ? startIndex + _pageSize : totalItems;
+
+    final paginatedTxns = filteredTxns.sublist(startIndex, endIndex);
+
+    return Column(
+      children: [
+        _buildDataTable(paginatedTxns),
+        // Pagination Footer
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            border: Border(top: BorderSide(color: Colors.grey.shade200)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Showing ${startIndex + 1} to $endIndex of $totalItems transactions',
+                style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Row(
+                children: [
+                  _buildPageButton(
+                    icon: LucideIcons.chevronLeft,
+                    isEnabled: _currentPage > 0,
+                    onTap: () => setState(() => _currentPage--),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Page ${_currentPage + 1} of $totalPages',
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _buildPageButton(
+                    icon: LucideIcons.chevronRight,
+                    isEnabled: _currentPage < totalPages - 1,
+                    onTap: () => setState(() => _currentPage++),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPageButton({
+    required IconData icon,
+    required bool isEnabled,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: isEnabled ? onTap : null,
+      borderRadius: BorderRadius.circular(4),
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isEnabled ? Colors.grey.shade300 : Colors.grey.shade100,
+          ),
+          borderRadius: BorderRadius.circular(4),
+          color: isEnabled ? Colors.white : Colors.grey.shade50,
+        ),
+        child: Icon(
+          icon,
+          size: 16,
+          color: isEnabled ? Colors.black87 : Colors.grey.shade400,
+        ),
+      ),
     );
   }
 

@@ -121,45 +121,83 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
     });
 
     // Simulate safe backdrop API delay
-    Timer(const Duration(milliseconds: 1800), () {
+    Timer(const Duration(milliseconds: 1800), () async {
       if (!mounted) return;
 
       final double withdrawnAmount = _earnings;
-      setState(() {
-        _earnings = 0.00;
-        _growthRate = '0% this month';
-        _isWithdrawing = false;
-      });
+      
+      try {
+        final email = FirebaseAuth.instance.currentUser?.email;
+        if (email != null) {
+          final batch = FirebaseFirestore.instance.batch();
+          final userRef = FirebaseFirestore.instance.collection('users').doc(email);
+          
+          // 1. Update user earnings
+          batch.update(userRef, {
+            'earnings': 0.0,
+          });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(
-                LucideIcons.checkCircle,
-                color: Colors.white,
-                size: 20,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Withdrawal of ₱${withdrawnAmount.toStringAsFixed(2)} processed to your registered Bank Account!',
-                  style: GoogleFonts.manrope(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
+          // 2. Log Transaction for Admin
+          final txnRef = FirebaseFirestore.instance.collection('transactions').doc();
+          batch.set(txnRef, {
+            'id': txnRef.id,
+            'user': _tutorName,
+            'userEmail': email,
+            'amount': withdrawnAmount,
+            'type': 'Withdrawal',
+            'status': 'Completed',
+            'date': FieldValue.serverTimestamp(),
+          });
+
+          await batch.commit();
+        }
+
+        setState(() {
+          _earnings = 0.00;
+          _growthRate = '0% this month';
+          _isWithdrawing = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(
+                  LucideIcons.checkCircle,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Withdrawal of ₱${withdrawnAmount.toStringAsFixed(2)} processed to your registered Bank Account!',
+                    style: GoogleFonts.manrope(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
+            backgroundColor: Colors.green.shade600,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
-          backgroundColor: Colors.green.shade600,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
+        );
+      } catch (e) {
+        if (mounted) {
+          setState(() => _isWithdrawing = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Withdrawal failed: $e'),
+              backgroundColor: AppTheme.primaryRed,
+            ),
+          );
+        }
+      }
     });
   }
 
