@@ -15,7 +15,7 @@ class TransactionsScreen extends StatefulWidget {
 
 class _TransactionsScreenState extends State<TransactionsScreen> {
   String _selectedStatusFilter =
-      'All'; // 'All', 'Completed', 'Pending', 'Failed'
+      'All'; // 'All', 'Completed', 'Pending', 'Cancelled', 'Failed'
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +50,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 isActive: _selectedStatusFilter == 'Pending',
               ),
             ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => setState(() => _selectedStatusFilter = 'Cancelled'),
+              child: _FilterChip(
+                label: 'Cancelled',
+                isActive: _selectedStatusFilter == 'Cancelled',
+              ),
+            ),
           ],
         ),
 
@@ -60,9 +68,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          child: DemoMode.isActive
-              ? _buildMockTransactionsTable()
-              : _buildLiveTransactionsTable(),
+          child: _buildLiveTransactionsTable(),
         ),
       ],
     );
@@ -297,6 +303,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         break;
       case 'Pending':
         color = AppTheme.secondaryGold;
+        break;
+      case 'Cancelled':
+        color = Colors.grey.shade600;
         break;
       case 'Failed':
         color = Colors.red;

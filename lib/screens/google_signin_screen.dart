@@ -141,12 +141,106 @@ class _GoogleSignInScreenState extends State<GoogleSignInScreen> {
       }
 
       // 2. Connect and Save user detail inside Cloud Firestore
+      String studentId = '';
+      String course = 'Select Course';
+      String department = 'Select Department';
+      String? dirName;
+      
+      // Extract student ID (the number block from the email)
+      final idMatch = RegExp(r'\.(\d+)@').firstMatch(email);
+      if (idMatch != null) {
+        studentId = idMatch.group(1) ?? '';
+      }
+
+      // Check student directory for automatic course and department lookup (Option A)
+      try {
+        // 1. Direct document lookup by email
+        var doc = await FirebaseFirestore.instance.collection('student_directory').doc(email).get();
+        Map<String, dynamic>? dirData;
+        if (doc.exists) {
+          dirData = doc.data();
+        } else {
+          // 2. Direct document lookup by lowercase email
+          doc = await FirebaseFirestore.instance.collection('student_directory').doc(email.toLowerCase()).get();
+          if (doc.exists) {
+            dirData = doc.data();
+          } else if (studentId.isNotEmpty) {
+            // 3. Direct document lookup by student ID
+            doc = await FirebaseFirestore.instance.collection('student_directory').doc(studentId).get();
+            if (doc.exists) {
+              dirData = doc.data();
+            }
+          }
+        }
+
+        // 4. Fallback queries
+        if (dirData == null) {
+          var query = await FirebaseFirestore.instance
+              .collection('student_directory')
+              .where('email', isEqualTo: email)
+              .limit(1)
+              .get();
+          if (query.docs.isNotEmpty) {
+            dirData = query.docs.first.data();
+          } else {
+            query = await FirebaseFirestore.instance
+                .collection('student_directory')
+                .where('email', isEqualTo: email.toLowerCase())
+                .limit(1)
+                .get();
+            if (query.docs.isNotEmpty) {
+              dirData = query.docs.first.data();
+            } else if (studentId.isNotEmpty) {
+              query = await FirebaseFirestore.instance
+                  .collection('student_directory')
+                  .where('studentId', isEqualTo: studentId)
+                  .limit(1)
+                  .get();
+              if (query.docs.isNotEmpty) {
+                dirData = query.docs.first.data();
+              } else {
+                query = await FirebaseFirestore.instance
+                    .collection('student_directory')
+                    .where('id', isEqualTo: studentId)
+                    .limit(1)
+                    .get();
+                if (query.docs.isNotEmpty) {
+                  dirData = query.docs.first.data();
+                }
+              }
+            }
+          }
+        }
+
+        if (dirData != null) {
+          course = dirData['course'] ?? dirData['program'] ?? course;
+          department = dirData['department'] ?? dirData['college'] ?? department;
+          dirName = dirData['name'] ?? dirData['fullName'] ?? dirData['fullname'] ?? dirData['fullName'];
+        }
+      } catch (dbErr) {
+        debugPrint('Directory lookup warning: $dbErr');
+      }
+
+      String rawName = email.split('@')[0];
+      rawName = rawName.replaceAll(RegExp(r'\d+'), '').trim();
+      String cleanedName = rawName.replaceAll(RegExp(r'^\.+|\.+$'), '').replaceAll('.', ' ').trim().toUpperCase();
+      if (cleanedName.isEmpty) {
+        cleanedName = email.split('@')[0].replaceAll('.', ' ').toUpperCase();
+      }
+
+      String finalName = (dirName != null && dirName.toString().isNotEmpty)
+          ? dirName.toString().trim().toUpperCase()
+          : cleanedName;
+
       await FirebaseFirestore.instance.collection('users').doc(email).set({
         'email': email,
-        'name': email.split('@')[0].replaceAll('.', ' ').toUpperCase(),
+        'name': finalName,
         'role': email == "j.antukan.549054@umindanao.edu.ph"
             ? "admin"
             : "student",
+        'studentId': studentId,
+        'program': course,
+        'college': department,
         'status': 'Active',
         'lastLogin': FieldValue.serverTimestamp(),
         'authProvider': 'Google',

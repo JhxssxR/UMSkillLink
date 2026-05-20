@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -140,6 +141,54 @@ class _ServiceApprovalsScreenState extends State<ServiceApprovalsScreen> {
     }
   }
 
+  void _showImageDialog(BuildContext context, String title, String? imageUrl) {
+    if (imageUrl == null || imageUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No image attached.')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              title: Text(title, style: const TextStyle(color: Colors.white)),
+              leading: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+            Expanded(
+              child: InteractiveViewer(
+                child: imageUrl.startsWith('data:image')
+                    ? Image.memory(
+                        base64Decode(imageUrl.split(',').last),
+                        fit: BoxFit.contain,
+                      )
+                    : Image.network(
+                        imageUrl,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Center(
+                                child: Icon(Icons.broken_image,
+                                    size: 100, color: Colors.white)),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showDetailsDialog(
     BuildContext context,
     String docId,
@@ -210,44 +259,78 @@ class _ServiceApprovalsScreenState extends State<ServiceApprovalsScreen> {
                   data['bio'] ?? 'No bio provided.',
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Icon(
-                      LucideIcons.fileCheck,
-                      size: 16,
-                      color: Colors.green,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'University ID Card Verified',
-                        style: GoogleFonts.manrope(
-                          fontSize: 12,
-                          color: Colors.grey.shade700,
+                InkWell(
+                  onTap: () => _showImageDialog(
+                    context,
+                    'University ID Card',
+                    data['idImageUrl'],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          LucideIcons.fileCheck,
+                          size: 16,
+                          color: Colors.green,
                         ),
-                      ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'University ID Card Verified',
+                            style: GoogleFonts.manrope(
+                              fontSize: 12,
+                              color: AppTheme.primaryRed,
+                              fontWeight: FontWeight.bold,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          LucideIcons.eye,
+                          size: 14,
+                          color: AppTheme.primaryRed,
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(
-                      LucideIcons.fileCheck,
-                      size: 16,
-                      color: Colors.green,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Academic proof of expertise uploaded',
-                        style: GoogleFonts.manrope(
-                          fontSize: 12,
-                          color: Colors.grey.shade700,
+                InkWell(
+                  onTap: () => _showImageDialog(
+                    context,
+                    'Proof of Expertise',
+                    data['expertiseImageUrl'],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          LucideIcons.fileCheck,
+                          size: 16,
+                          color: Colors.green,
                         ),
-                      ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Academic proof of expertise uploaded',
+                            style: GoogleFonts.manrope(
+                              fontSize: 12,
+                              color: AppTheme.primaryRed,
+                              fontWeight: FontWeight.bold,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          LucideIcons.eye,
+                          size: 14,
+                          color: AppTheme.primaryRed,
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),

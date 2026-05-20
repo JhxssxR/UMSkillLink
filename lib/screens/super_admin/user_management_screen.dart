@@ -328,9 +328,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          child: DemoMode.isActive
-              ? _buildMockUsersTable()
-              : StreamBuilder<QuerySnapshot>(
+          child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('users')
                       .snapshots(),

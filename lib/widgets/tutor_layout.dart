@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/app_theme.dart';
 import '../screens/tutor/tutor_dashboard_screen.dart';
 import '../screens/tutor/manage_services_screen.dart';
@@ -14,11 +16,17 @@ class TutorLayout extends StatefulWidget {
   const TutorLayout({super.key, this.initialIndex = 0});
 
   @override
-  State<TutorLayout> createState() => _TutorLayoutState();
+  State<TutorLayout> createState() => TutorLayoutState();
 }
 
-class _TutorLayoutState extends State<TutorLayout> {
+class TutorLayoutState extends State<TutorLayout> {
   late int _currentIndex;
+
+  void setIndex(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
 
   final List<Widget> _pages = [
     const TutorDashboardScreen(),
@@ -70,6 +78,8 @@ class _TutorLayoutState extends State<TutorLayout> {
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final bool isActive = _currentIndex == index;
+    final bool isMessages = index == 3;
+    final String? myEmail = FirebaseAuth.instance.currentUser?.email?.toLowerCase();
 
     return GestureDetector(
       key: ValueKey('tutor_nav_$index'),
@@ -93,11 +103,52 @@ class _TutorLayoutState extends State<TutorLayout> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              color: isActive ? Colors.white : const Color(0xFF7A7C80),
-              size: 20,
-            ),
+            isMessages && myEmail != null
+                ? StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('messages')
+                        .where('receiverId', isEqualTo: myEmail)
+                        .where('isRead', isEqualTo: false)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      final bool hasUnread = (snapshot.data?.docs.length ?? 0) > 0;
+                      return Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Icon(
+                            icon,
+                            color: isActive ? Colors.white : const Color(0xFF7A7C80),
+                            size: 20,
+                          ),
+                          if (hasUnread)
+                            Positioned(
+                              right: -2,
+                              top: -2,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: isActive ? Colors.white : Colors.red,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isActive ? AppTheme.primaryRed : Colors.white,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 8,
+                                  minHeight: 8,
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  )
+                : Icon(
+                    icon,
+                    color: isActive ? Colors.white : const Color(0xFF7A7C80),
+                    size: 20,
+                  ),
             if (isActive) ...[
               const SizedBox(width: 8),
               Text(

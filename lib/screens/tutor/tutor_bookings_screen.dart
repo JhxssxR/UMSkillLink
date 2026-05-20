@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/app_theme.dart';
 import '../../models/mock_data.dart';
-import '../../components/custom_app_bar.dart';
+import '../../components/tutor_app_bar.dart';
 import '../../services/notification_service.dart';
 
 class TutorBookingsScreen extends StatefulWidget {
@@ -21,206 +23,191 @@ class _TutorBookingsScreenState extends State<TutorBookingsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadRequests();
-  }
-
-  void _loadRequests() {
-    setState(() {
-      _requests = MockData.tutorRequests;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      appBar: CustomAppBar(
-        subtitle: 'TUTOR PORTAL',
-        centerTitle: false,
-        actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.helpCircle, color: Color(0xFF7A7C80)),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: Text(
-                    'Need Help?',
-                    style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
-                  ),
-                  content: Text(
-                    'Here you can manage incoming session bookings from students. Accepting a request will add it to your confirmed schedule, and declining will notify the student to choose another slot.',
-                    style: GoogleFonts.manrope(),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text(
-                        'Got it',
-                        style: GoogleFonts.manrope(
-                          color: AppTheme.primaryRed,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+    final String tutorEmail = FirebaseAuth.instance.currentUser?.email?.toLowerCase() ?? '';
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('tutor_requests')
+          .where('tutorEmail', isEqualTo: tutorEmail)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(color: AppTheme.primaryRed),
+            ),
+          );
+        }
+
+        _requests = snapshot.data?.docs.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              data['id'] = doc.id;
+              return data;
+            }).toList() ??
+            [];
+
+        return Scaffold(
+          backgroundColor: const Color(0xFFF8F9FA),
+          appBar: const TutorAppBar(
+            showBackButton: true,
+            centerTitle: false,
           ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header Section
-              Text(
-                'Session Requests',
-                style: GoogleFonts.manrope(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.neutralColor,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Manage your upcoming tutoring appointments and new inquiries.',
-                style: GoogleFonts.manrope(
-                  fontSize: 14,
-                  color: const Color(0xFF7A7C80),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Tab headers with line indicators
-              Row(
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () {
-                        setState(() {
-                          _activeTab = 0;
-                        });
-                      },
-                      child: Column(
-                        children: [
-                          Text(
-                            'Incoming (${_requests.where((r) => r['status'] == 'Pending').length})',
-                            style: GoogleFonts.manrope(
-                              fontSize: 14,
-                              fontWeight: _activeTab == 0
-                                  ? FontWeight.bold
-                                  : FontWeight.w600,
-                              color: _activeTab == 0
-                                  ? AppTheme.primaryRed
-                                  : const Color(0xFF7A7C80),
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 10),
-                          Container(
-                            height: 2,
-                            color: _activeTab == 0
-                                ? AppTheme.primaryRed
-                                : Colors.transparent,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: InkWell(
-                      onTap: () {
-                        setState(() {
-                          _activeTab = 1;
-                        });
-                      },
-                      child: Column(
-                        children: [
-                          Text(
-                            'Confirmed (${_requests.where((r) => r['status'] == 'Confirmed').length})',
-                            style: GoogleFonts.manrope(
-                              fontSize: 14,
-                              fontWeight: _activeTab == 1
-                                  ? FontWeight.bold
-                                  : FontWeight.w600,
-                              color: _activeTab == 1
-                                  ? AppTheme.primaryRed
-                                  : const Color(0xFF7A7C80),
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 10),
-                          Container(
-                            height: 2,
-                            color: _activeTab == 1
-                                ? AppTheme.primaryRed
-                                : Colors.transparent,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              // Active Tab List contents
-              _activeTab == 0 ? _buildIncomingList() : _buildConfirmedList(),
-              const SizedBox(height: 32),
-
-              // Upcoming Confirmed Heading Row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
+                  // Header Section
                   Text(
-                    'Upcoming Confirmed',
+                    'Session Requests',
                     style: GoogleFonts.manrope(
-                      fontSize: 18,
+                      fontSize: 28,
                       fontWeight: FontWeight.w800,
                       color: AppTheme.neutralColor,
+                      letterSpacing: -0.5,
                     ),
                   ),
-                  InkWell(
-                    onTap: () {
-                      setState(() {
-                        _activeTab = 1;
-                      });
-                    },
-                    child: Row(
-                      children: [
-                        Text(
-                          'View Schedule',
-                          style: GoogleFonts.manrope(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.primaryRed,
+                  const SizedBox(height: 6),
+                  Text(
+                    'Manage your upcoming tutoring appointments and new inquiries.',
+                    style: GoogleFonts.manrope(
+                      fontSize: 14,
+                      color: const Color(0xFF7A7C80),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Tab headers with line indicators
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () {
+                            setState(() {
+                              _activeTab = 0;
+                            });
+                          },
+                          child: Column(
+                            children: [
+                              Text(
+                                'Incoming (${_requests.where((r) => r['status'] == 'Pending').length})',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 14,
+                                  fontWeight: _activeTab == 0
+                                      ? FontWeight.bold
+                                      : FontWeight.w600,
+                                  color: _activeTab == 0
+                                      ? AppTheme.primaryRed
+                                      : const Color(0xFF7A7C80),
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 10),
+                              Container(
+                                height: 2,
+                                color: _activeTab == 0
+                                    ? AppTheme.primaryRed
+                                    : Colors.transparent,
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        const Icon(
-                          LucideIcons.arrowRight,
-                          size: 14,
-                          color: AppTheme.primaryRed,
+                      ),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () {
+                            setState(() {
+                              _activeTab = 1;
+                            });
+                          },
+                          child: Column(
+                            children: [
+                              Text(
+                                'Confirmed (${_requests.where((r) => r['status'] == 'Confirmed').length})',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 14,
+                                  fontWeight: _activeTab == 1
+                                      ? FontWeight.bold
+                                      : FontWeight.w600,
+                                  color: _activeTab == 1
+                                      ? AppTheme.primaryRed
+                                      : const Color(0xFF7A7C80),
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 10),
+                              Container(
+                                height: 2,
+                                color: _activeTab == 1
+                                    ? AppTheme.primaryRed
+                                    : Colors.transparent,
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 20),
+
+                  // Active Tab List contents
+                  _activeTab == 0 ? _buildIncomingList() : _buildConfirmedList(tutorEmail),
+                  const SizedBox(height: 32),
+
+                  // Upcoming Confirmed Heading Row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Upcoming Confirmed',
+                        style: GoogleFonts.manrope(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.neutralColor,
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _activeTab = 1;
+                          });
+                        },
+                        child: Row(
+                          children: [
+                            Text(
+                              'View Schedule',
+                              style: GoogleFonts.manrope(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.primaryRed,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(
+                              LucideIcons.arrowRight,
+                              size: 14,
+                              color: AppTheme.primaryRed,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Premium purple next session card
+                  _buildUpcomingCard(),
                 ],
               ),
-              const SizedBox(height: 16),
-
-              // Premium purple next session card
-              _buildUpcomingCard(),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -259,7 +246,7 @@ class _TutorBookingsScreenState extends State<TutorBookingsScreen> {
     );
   }
 
-  Widget _buildConfirmedList() {
+  Widget _buildConfirmedList(String tutorEmail) {
     final confirmed = _requests
         .where((r) => r['status'] == 'Confirmed')
         .toList();
@@ -341,29 +328,150 @@ class _TutorBookingsScreenState extends State<TutorBookingsScreen> {
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'Confirmed',
-                  style: GoogleFonts.manrope(
-                    color: Colors.green,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'Confirmed',
+                      style: GoogleFonts.manrope(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 8),
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance.collection('bookings').doc(request['id']).snapshots(),
+                    builder: (context, snap) {
+                      bool endRequested = false;
+                      bool isAutoCompleted = false;
+                      if (snap.hasData && snap.data!.exists) {
+                        final d = snap.data!.data() as Map<String, dynamic>;
+                        endRequested = d['endRequestedAt'] != null;
+                        
+                        // Local check for 5 minute timeout to show status
+                        if (endRequested && d['status'] == 'Confirmed') {
+                          final Timestamp ts = d['endRequestedAt'];
+                          final diff = DateTime.now().difference(ts.toDate());
+                          if (diff.inMinutes >= 5) {
+                            isAutoCompleted = true;
+                            // Trigger completion in background if UI sees it expired
+                            MockData.finalizeSession(request['id'], tutorEmail);
+                          }
+                        }
+                      }
+
+                      return TextButton(
+                        onPressed: endRequested ? null : () => _showEndSessionDialog(request),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          isAutoCompleted ? 'Completed (Auto)' : (endRequested ? 'Awaiting Student...' : 'Mark as Finished'),
+                          style: GoogleFonts.manrope(
+                            color: endRequested ? Colors.grey : AppTheme.primaryRed,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            decoration: endRequested ? TextDecoration.none : TextDecoration.underline,
+                          ),
+                        ),
+                      );
+                    }
+                  ),
+                ],
               ),
             ],
           ),
         );
       },
     );
+  }
+
+  void _showEndSessionDialog(Map<String, dynamic> request) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Finish Session',
+          style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'Mark this session with ${request['learnerName']} as finished? The student will have 5 minutes to confirm, otherwise funds will be automatically released to you.',
+          style: GoogleFonts.manrope(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Not yet',
+              style: GoogleFonts.manrope(color: Colors.grey, fontWeight: FontWeight.bold),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              _completeSession(request);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryRed,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Confirm Finish'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _completeSession(Map<String, dynamic> request) async {
+    final String requestId = request['id'].toString();
+    final String? tutorEmail = FirebaseAuth.instance.currentUser?.email;
+
+    if (tutorEmail != null) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator(color: AppTheme.primaryRed)),
+      );
+
+      // Start the 5-minute timer flow
+      await MockData.requestSessionEnd(requestId);
+
+      // Notify Student
+      final studentEmail = request['studentEmail'];
+      if (studentEmail != null) {
+        NotificationService.sendNotification(
+          studentEmail.toString(),
+          'Session Finished? 🎓',
+          'Your tutor has marked the session for ${request['subject']} as finished. Please confirm within 5 minutes or funds will be released.',
+          'session_end_request',
+        );
+      }
+
+      if (mounted) {
+        Navigator.pop(context); // Remove loading overlay
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Session marked as finished! Waiting for student confirmation.'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildRequestCard(Map<String, dynamic> request) {
@@ -415,6 +523,18 @@ class _TutorBookingsScreenState extends State<TutorBookingsScreen> {
                             Icons.verified,
                             color: Color(0xFF3B82F6),
                             size: 16,
+                          ),
+                        ],
+                        if (request['subscriptionTier'] == 'Learner Lite') ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.secondaryGold.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppTheme.secondaryGold, width: 0.5),
+                            ),
+                            child: const Icon(LucideIcons.award, color: AppTheme.secondaryGold, size: 10),
                           ),
                         ],
                         if (request['topLearner'] == true) ...[
@@ -779,18 +899,7 @@ class _TutorBookingsScreenState extends State<TutorBookingsScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              setState(() {
-                request['status'] = 'Declined';
-              });
-              for (var booking in MockData.learnerBookings) {
-                if (booking['id'] == request['id']) {
-                  setState(() {
-                    booking['status'] = 'Declined';
-                    booking['isUpcoming'] = false;
-                  });
-                  break;
-                }
-              }
+              
               MockData.syncTutorRequestUpdated(
                 request['id'].toString(),
                 'Declined',
@@ -802,13 +911,15 @@ class _TutorBookingsScreenState extends State<TutorBookingsScreen> {
               );
               
               // Trigger notification to student
-              final studentEmail = request['studentEmail'] ?? 'gabriel.reyes@umindanao.edu.ph';
-              NotificationService.sendNotification(
-                studentEmail,
-                'Booking Update ❌',
-                'Your booking request for ${request['subject']} on ${request['time']} has been declined by the tutor.',
-                'booking_declined',
-              );
+              final studentEmail = request['studentEmail'];
+              if (studentEmail != null && studentEmail.toString().isNotEmpty) {
+                NotificationService.sendNotification(
+                  studentEmail.toString(),
+                  'Booking Update ❌',
+                  'Your booking request for ${request['subject']} on ${request['time']} has been declined by the tutor.',
+                  'booking_declined',
+                );
+              }
 
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -854,38 +965,27 @@ class _TutorBookingsScreenState extends State<TutorBookingsScreen> {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              setState(() {
-                request['status'] = 'Confirmed';
-              });
-              for (var booking in MockData.learnerBookings) {
-                if (booking['id'] == request['id']) {
-                  setState(() {
-                    booking['status'] = 'Confirmed';
-                    booking['isUpcoming'] = true;
-                  });
-                  break;
-                }
+
+              final String requestId = request['id'].toString();
+              final String? tutorEmail = FirebaseAuth.instance.currentUser?.email;
+              final double sessionFee = (request['price'] ?? 450.0).toDouble();
+
+              if (tutorEmail != null) {
+                await MockData.acceptTutorRequest(requestId, tutorEmail, sessionFee);
               }
-              MockData.syncTutorRequestUpdated(
-                request['id'].toString(),
-                'Confirmed',
-              );
-              MockData.syncBookingStatusUpdated(
-                request['id'].toString(),
-                'Confirmed',
-                isUpcoming: true,
-              );
 
               // Trigger notification to student
-              final studentEmail = request['studentEmail'] ?? 'gabriel.reyes@umindanao.edu.ph';
-              NotificationService.sendNotification(
-                studentEmail,
-                'Booking Confirmed! 🎉',
-                'Your booking request for ${request['subject']} on ${request['time']} has been confirmed by the tutor!',
-                'booking_confirmed',
-              );
+              final studentEmail = request['studentEmail'];
+              if (studentEmail != null && studentEmail.toString().isNotEmpty) {
+                NotificationService.sendNotification(
+                  studentEmail.toString(),
+                  'Booking Confirmed! 🎉',
+                  'Your booking request for ${request['subject']} on ${request['time']} has been confirmed by the tutor!',
+                  'booking_confirmed',
+                );
+              }
 
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(

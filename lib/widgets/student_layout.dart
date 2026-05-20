@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/app_theme.dart';
 import '../screens/student/marketplace_screen.dart';
 import '../screens/student/bookings_screen.dart';
@@ -72,6 +74,8 @@ class StudentLayoutState extends State<StudentLayout> {
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final bool isActive = _currentIndex == index;
+    final bool isMessages = index == 2;
+    final String? myEmail = FirebaseAuth.instance.currentUser?.email?.toLowerCase();
 
     return GestureDetector(
       key: ValueKey('student_nav_$index'),
@@ -95,11 +99,52 @@ class StudentLayoutState extends State<StudentLayout> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              color: isActive ? Colors.white : const Color(0xFF7A7C80),
-              size: 20,
-            ),
+            isMessages && myEmail != null
+                ? StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('messages')
+                        .where('receiverId', isEqualTo: myEmail)
+                        .where('isRead', isEqualTo: false)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      final bool hasUnread = (snapshot.data?.docs.length ?? 0) > 0;
+                      return Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Icon(
+                            icon,
+                            color: isActive ? Colors.white : const Color(0xFF7A7C80),
+                            size: 20,
+                          ),
+                          if (hasUnread)
+                            Positioned(
+                              right: -2,
+                              top: -2,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: isActive ? Colors.white : Colors.red,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isActive ? AppTheme.primaryRed : Colors.white,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 8,
+                                  minHeight: 8,
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  )
+                : Icon(
+                    icon,
+                    color: isActive ? Colors.white : const Color(0xFF7A7C80),
+                    size: 20,
+                  ),
             if (isActive) ...[
               const SizedBox(width: 8),
               Text(

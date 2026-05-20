@@ -2,12 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class NotificationService {
   static Future<void> sendNotification(String userEmail, String title, String message, String type) async {
-    if (userEmail.isEmpty) return;
+    final String cleanEmail = userEmail.trim().toLowerCase();
+    if (cleanEmail.isEmpty) return;
 
     try {
       await FirebaseFirestore.instance
           .collection('users')
-          .doc(userEmail)
+          .doc(cleanEmail)
           .collection('notifications')
           .add({
         'title': title,

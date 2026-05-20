@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/app_theme.dart';
 import '../../widgets/student_layout.dart';
 import '../../components/custom_app_bar.dart';
 
 class FeedbackScreen extends StatefulWidget {
-  const FeedbackScreen({super.key});
+  final Map<String, dynamic>? booking;
+  final bool initialComplaint;
+  const FeedbackScreen({super.key, this.booking, this.initialComplaint = false});
 
   @override
   State<FeedbackScreen> createState() => _FeedbackScreenState();
@@ -15,7 +19,7 @@ class FeedbackScreen extends StatefulWidget {
 class _FeedbackScreenState extends State<FeedbackScreen> {
   int _selectedRating = 4; // Default to 4 out of 5 stars
   final TextEditingController _commentController = TextEditingController();
-  bool _isFileComplaintActive = false;
+  late bool _isFileComplaintActive;
   String _selectedIssueCategory = 'Late attendance';
 
   final List<String> _issueCategories = [
@@ -25,8 +29,132 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     'Other issue',
   ];
 
-  void _submitFeedback() {
-    // Show a success dialog
+  @override
+  void initState() {
+    super.initState();
+    _isFileComplaintActive = widget.initialComplaint;
+  }
+
+  Future<void> _submitFeedback() async {
+    final String? tutorEmail = widget.booking?['tutorEmail'];
+    final String? studentEmail = FirebaseAuth.instance.currentUser?.email;
+
+    if (tutorEmail == null || studentEmail == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error: Missing tutor or student information.')),
+      );
+      return;
+    }
+
+    // Show loading overlay
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(color: AppTheme.primaryRed),
+      ),
+    );
+
+    try {
+      // 1. Get Student Name
+      String studentName = 'Anonymous Student';
+      final studentDoc = await FirebaseFirestore.instance.collection('users').doc(studentEmail).get();
+      if (studentDoc.exists) {
+        studentName = studentDoc.data()?['name'] ?? studentName;
+      }
+
+      final batch = FirebaseFirestore.instance.batch();
+
+      // 2. Add Review to Tutor's reviews sub-collection
+      final reviewRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(tutorEmail)
+          .collection('reviews')
+          .doc();
+      
+      batch.set(reviewRef, {
+        'studentName': studentName,
+        'studentEmail': studentEmail,
+        'rating': _selectedRating,
+        'comment': _commentController.text.trim(),
+        'timestamp': FieldValue.serverTimestamp(),
+        'bookingId': widget.booking?['id'],
+      });
+
+      // 3. Update Tutor document
+      final tutorRef = FirebaseFirestore.instance.collection('users').doc(tutorEmail);
+      final tutorDoc = await tutorRef.get();
+      
+      double currentRating = 0.0;
+      int currentReviewsCount = 0;
+      
+      if (tutorDoc.exists) {
+        final data = tutorDoc.data()!;
+        currentRating = (data['rating'] ?? 0.0).toDouble();
+        currentReviewsCount = (data['reviews'] ?? 0);
+      }
+      
+      final int newReviewsCount = currentReviewsCount + 1;
+      final double newRating = ((currentRating * currentReviewsCount) + _selectedRating) / newReviewsCount;
+      final double fixedRating = double.parse(newRating.toStringAsFixed(1));
+
+      batch.update(tutorRef, {
+        'rating': fixedRating,
+        'reviews': newReviewsCount,
+      });
+
+      // 4. Update Tutor's services
+      final servicesQuery = await FirebaseFirestore.instance
+          .collection('services')
+          .where('tutorEmail', isEqualTo: tutorEmail)
+          .get();
+      
+      for (var doc in servicesQuery.docs) {
+        batch.update(doc.reference, {
+          'rating': fixedRating,
+          'reviews': newReviewsCount,
+        });
+      }
+
+      // 5. Update booking
+      if (widget.booking?['id'] != null) {
+        batch.update(
+          FirebaseFirestore.instance.collection('bookings').doc(widget.booking!['id']),
+          {'feedbackGiven': true}
+        );
+      }
+
+      // 6. Complaint
+      if (_isFileComplaintActive) {
+        final complaintRef = FirebaseFirestore.instance.collection('complaints').doc();
+        batch.set(complaintRef, {
+          'tutorEmail': tutorEmail,
+          'studentEmail': studentEmail,
+          'category': _selectedIssueCategory,
+          'comment': _commentController.text.trim(),
+          'timestamp': FieldValue.serverTimestamp(),
+          'bookingId': widget.booking?['id'],
+          'status': 'Pending',
+        });
+      }
+
+      await batch.commit();
+
+      if (mounted) {
+        Navigator.pop(context); // Pop loading
+        _showSuccessDialog();
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Pop loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.primaryRed),
+        );
+      }
+    }
+  }
+
+  void _showSuccessDialog() {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -208,7 +336,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Web Development Tutoring',
+                            widget.booking?['subject'] ?? 'Tutoring Session',
                             style: GoogleFonts.manrope(
                               fontSize: 18,
                               fontWeight: FontWeight.w800,
@@ -217,7 +345,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Session with Alex Rivera • Oct 24, 2023',
+                            'Session with ${widget.booking?['tutorName'] ?? 'Tutor'} • ${widget.booking?['time'] ?? 'Recent'}',
                             style: GoogleFonts.manrope(
                               color: const Color(0xFF7A7C80),
                               fontSize: 11,
@@ -232,9 +360,13 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                               CircleAvatar(
                                 radius: 20,
                                 backgroundColor: Colors.grey.shade300,
-                                backgroundImage: const NetworkImage(
-                                  'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100',
-                                ),
+                                backgroundImage: widget.booking?['imagePath'] != null
+                                    ? (widget.booking!['imagePath'].startsWith('assets/')
+                                        ? AssetImage(widget.booking!['imagePath']) as ImageProvider
+                                        : NetworkImage(widget.booking!['imagePath']))
+                                    : const NetworkImage(
+                                        'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100',
+                                      ),
                                 onBackgroundImageError:
                                     (exception, stackTrace) {},
                               ),
@@ -244,7 +376,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Alex Rivera',
+                                      widget.booking?['tutorName'] ?? 'Tutor',
                                       style: GoogleFonts.manrope(
                                         fontSize: 14,
                                         fontWeight: FontWeight.bold,
@@ -252,7 +384,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                                       ),
                                     ),
                                     Text(
-                                      'B.S. Information Technology',
+                                      widget.booking?['college'] ?? 'University of Mindanao',
                                       style: GoogleFonts.manrope(
                                         fontSize: 11,
                                         color: const Color(0xFF7A7C80),

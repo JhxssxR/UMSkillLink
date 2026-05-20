@@ -11,18 +11,22 @@ import '../../services/notification_service.dart';
 
 class ConfirmPaymentScreen extends StatefulWidget {
   final String tutorName;
+  final String? tutorEmail;
   final String subjectName;
   final String dateStr;
   final String timeSlot;
   final double totalAmount;
+  final int duration;
 
   const ConfirmPaymentScreen({
     super.key,
     required this.tutorName,
+    this.tutorEmail,
     required this.subjectName,
     required this.dateStr,
     required this.timeSlot,
     required this.totalAmount,
+    this.duration = 1,
   });
 
   @override
@@ -91,6 +95,8 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
       // Dismiss loading dialog
       Navigator.pop(context);
 
+      final String learnerName = FirebaseAuth.instance.currentUser?.displayName ?? (FirebaseAuth.instance.currentUser?.email?.split('@')[0] ?? 'Learner');
+
       // Insert the newly confirmed session into MockData bookings dynamically!
       String imagePath =
           'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100';
@@ -113,50 +119,59 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
 
       final String bookingId = DateTime.now().millisecondsSinceEpoch.toString();
 
-      final String studentEmail = FirebaseAuth.instance.currentUser?.email ?? 'anonymous';
-      String tutorEmail = 'tutor_sarah@umindanao.edu.ph';
-      if (widget.tutorName.contains('Sarah')) {
-        tutorEmail = 'tutor_sarah@umindanao.edu.ph';
-      } else if (widget.tutorName.contains('Aris')) {
-        tutorEmail = 'tutor_aris@umindanao.edu.ph';
-      } else if (widget.tutorName.contains('Marcus')) {
-        tutorEmail = 'tutor_marcus@umindanao.edu.ph';
-      } else if (widget.tutorName.contains('Elena')) {
-        tutorEmail = 'tutor_elena@umindanao.edu.ph';
-      } else if (widget.tutorName.contains('Maria')) {
-        tutorEmail = 'tutor_maria@umindanao.edu.ph';
-      } else if (widget.tutorName.contains('Marco')) {
-        tutorEmail = 'tutor_marco@umindanao.edu.ph';
-      } else {
-        final slug = widget.tutorName.toLowerCase().replaceAll(' ', '_');
-        tutorEmail = 'tutor_$slug@umindanao.edu.ph';
-      }
+      final String studentEmail =
+          (FirebaseAuth.instance.currentUser?.email ?? 'anonymous').toLowerCase();
+      final String tutorEmail =
+          (widget.tutorEmail ??
+          (() {
+            if (widget.tutorName.contains('Sarah')) {
+              return 'tutor_sarah@umindanao.edu.ph';
+            } else if (widget.tutorName.contains('Aris')) {
+              return 'tutor_aris@umindanao.edu.ph';
+            } else if (widget.tutorName.contains('Marcus')) {
+              return 'tutor_marcus@umindanao.edu.ph';
+            } else if (widget.tutorName.contains('Elena')) {
+              return 'tutor_elena@umindanao.edu.ph';
+            } else if (widget.tutorName.contains('Maria')) {
+              return 'tutor_maria@umindanao.edu.ph';
+            } else if (widget.tutorName.contains('Marco')) {
+              return 'tutor_marco@umindanao.edu.ph';
+            } else {
+              final slug = widget.tutorName.toLowerCase().replaceAll(' ', '_');
+              return 'tutor_$slug@umindanao.edu.ph';
+            }
+          }())).toLowerCase();
 
       final Map<String, dynamic> newBooking = {
         'id': bookingId,
         'tutorName': widget.tutorName,
+        'learnerName': learnerName,
         'subject': widget.subjectName,
         'time': '${widget.dateStr} • ${widget.timeSlot}',
         'isUpcoming': true,
         'status': 'Pending',
         'imagePath': imagePath,
+        'price': widget.totalAmount,
         'studentEmail': studentEmail,
         'tutorEmail': tutorEmail,
+        'duration': widget.duration,
       };
 
       final Map<String, dynamic> newRequest = {
         'id': bookingId,
-        'learnerName': 'Gabriel Reyes',
-        'degree': 'BS Information Technology',
+        'learnerName': learnerName,
+        'degree': 'Student',
         'subject': widget.subjectName,
         'time': widget.dateStr,
         'timeDetail': widget.timeSlot,
         'status': 'Pending',
-        'avatar':
+        'price': widget.totalAmount,
+        'avatar': FirebaseAuth.instance.currentUser?.photoURL ??
             'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100',
         'verified': true,
         'studentEmail': studentEmail,
         'tutorEmail': tutorEmail,
+        'duration': widget.duration,
       };
 
       MockData.learnerBookings.insert(0, newBooking);
@@ -164,6 +179,27 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
 
       MockData.syncBookingAdded(newBooking);
       MockData.syncTutorRequestAdded(newRequest);
+
+      // Fetch tutor's commission rate before logging transaction
+      FirebaseFirestore.instance.collection('users').doc(tutorEmail).get().then((tutorDoc) {
+        double commissionRate = 0.05; // Default 5%
+        if (tutorDoc.exists) {
+          final data = tutorDoc.data() as Map<String, dynamic>;
+          if (data['subscriptionTier'] == 'Tutor Pro') {
+            commissionRate = 0.03; // 3% for Pro
+          }
+        }
+
+        // Log Booking Commission to Transactions for Admin Revenue tracking
+        FirebaseFirestore.instance.collection('transactions').add({
+          'user': studentEmail,
+          'amount': widget.totalAmount * commissionRate,
+          'type': 'Booking Commission',
+          'status': 'Completed',
+          'date': FieldValue.serverTimestamp(),
+          'tutorEmail': tutorEmail,
+        });
+      });
 
       // Trigger Real-Time Notifications using Central NotificationService
       NotificationService.sendNotification(
@@ -183,7 +219,7 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
       NotificationService.sendNotification(
         tutorEmail,
         'New Booking Request! 🔔',
-        'Gabriel Reyes has requested a session for ${widget.subjectName} on ${widget.dateStr} at ${widget.timeSlot}.',
+        '$learnerName has requested a session for ${widget.subjectName} on ${widget.dateStr} at ${widget.timeSlot}.',
         'booking_request',
       );
 
@@ -372,40 +408,27 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                        width: 32,
-                                        height: 32,
-                                        decoration: BoxDecoration(
+                                  Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: selectedProvider == 'GCash'
+                                          ? Colors.white
+                                          : const Color(0xFF007DFE),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        'G',
+                                        style: GoogleFonts.outfit(
                                           color: selectedProvider == 'GCash'
-                                              ? Colors.white
-                                              : const Color(0xFF007DFE),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Center(
-                                          child: Text(
-                                            'G',
-                                            style: GoogleFonts.outfit(
-                                              color: selectedProvider == 'GCash'
-                                                  ? const Color(0xFF007DFE)
-                                                  : Colors.white,
-                                              fontWeight: FontWeight.w900,
-                                              fontSize: 18,
-                                            ),
-                                          ),
+                                              ? const Color(0xFF007DFE)
+                                              : Colors.white,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 18,
                                         ),
                                       ),
-                                      const SizedBox(width: 4),
-                                      Icon(
-                                        LucideIcons.wifi,
-                                        color: selectedProvider == 'GCash'
-                                            ? Colors.white
-                                            : const Color(0xFF007DFE),
-                                        size: 16,
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
@@ -472,11 +495,14 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
                                           : const Color(0xFFF1F3F5),
                                       shape: BoxShape.circle,
                                     ),
-                                    child: const Center(
-                                      child: Icon(
-                                        Icons.blur_on_rounded,
-                                        color: Color(0xFF00F59B),
-                                        size: 20,
+                                    child: Center(
+                                      child: Text(
+                                        'm',
+                                        style: GoogleFonts.outfit(
+                                          color: const Color(0xFF00F59B),
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 18,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -1256,31 +1282,23 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 14,
-                    height: 14,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'G',
-                        style: TextStyle(
-                          color: Color(0xFF007DFE),
-                          fontWeight: FontWeight.w900,
-                          fontSize: 9,
-                        ),
-                      ),
+              Container(
+                width: 14,
+                height: 14,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Text(
+                    'G',
+                    style: TextStyle(
+                      color: Color(0xFF007DFE),
+                      fontWeight: FontWeight.w900,
+                      fontSize: 9,
                     ),
                   ),
-                  const SizedBox(width: 1),
-                  const Icon(LucideIcons.wifi, color: Colors.white, size: 9),
-                ],
+                ),
               ),
               const SizedBox(height: 2),
               const Text(
@@ -1306,25 +1324,14 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
           border: Border.all(color: const Color(0xFF1E293B), width: 1),
         ),
         child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.blur_on_rounded,
-                color: Color(0xFF00F59B),
-                size: 14,
-              ),
-              const SizedBox(height: 1),
-              Text(
-                'maya',
-                style: GoogleFonts.outfit(
-                  color: Color(0xFF00F59B),
-                  fontWeight: FontWeight.w800,
-                  fontSize: 10,
-                  letterSpacing: -0.5,
-                ),
-              ),
-            ],
+          child: Text(
+            'maya',
+            style: GoogleFonts.outfit(
+              color: const Color(0xFF00F59B),
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+              letterSpacing: -0.5,
+            ),
           ),
         ),
       );

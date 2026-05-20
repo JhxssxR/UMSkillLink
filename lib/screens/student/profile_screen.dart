@@ -8,6 +8,8 @@ import '../../widgets/student_layout.dart';
 import '../../widgets/tutor_layout.dart';
 import '../tutor/tutor_application_screen.dart';
 import 'payment_methods_screen.dart';
+import 'subscription_payment_screen.dart';
+import '../../services/notification_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -43,7 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (_) {}
 
-    final String email = user?.email ?? 'student@umindanao.edu.ph';
+    final String email = (user?.email ?? 'student@umindanao.edu.ph').toLowerCase();
 
     final stream = hasFirebase
         ? FirebaseFirestore.instance.collection('users').doc(email).snapshots()
@@ -55,6 +57,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         String name = 'Juan Dela Cruz';
         String program = 'BS Computer Science';
         String role = hasFirebase ? 'student' : 'tutor';
+        String college = '';
+        String studentId = '';
 
         bool isNewAccount = hasFirebase;
 
@@ -65,9 +69,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
           name = data['name'] ?? name;
           program = data['program'] ?? data['course'] ?? program;
           role = data['role'] ?? role;
+          college = data['college'] ?? college;
+          studentId = data['studentId'] ?? studentId;
           // Determine if account is new based on missing learning stats
           isNewAccount = data['completedSessions'] == null;
           goalsList = data['academicGoals'] ?? [];
+
+          // Auto-healing logic: if name contains digits, or if program/college is placeholder,
+          // we attempt to fetch from student_directory and update Firestore in the background.
+          String healedName = name;
+          if (RegExp(r'\d+').hasMatch(name)) {
+            String rawName = name.replaceAll(RegExp(r'\d+'), '').trim();
+            healedName = rawName.replaceAll(RegExp(r'^\.+|\.+$'), '').replaceAll('.', ' ').trim().toUpperCase();
+            if (healedName.isEmpty) {
+              healedName = name;
+            }
+          }
+
+          if (healedName != name || program == 'Select Course' || college == 'Select Department' || college.isEmpty) {
+            _healProfileData(email, studentId, healedName, name, program, college);
+          }
         } else {
           if (user?.displayName != null && user!.displayName!.isNotEmpty) {
             name = user.displayName!;
@@ -84,12 +105,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           }
         }
 
+        // Academic Goals list should only contain what's in Firestore
         if (goalsList.isEmpty) {
-          if (isNewAccount) {
-            // Truly empty for a new account
-          } else {
-            goalsList = MockData.academicGoals;
-          }
+          goalsList = [];
         }
 
         return Scaffold(
@@ -103,103 +121,314 @@ class _ProfileScreenState extends State<ProfileScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
             children: [
               // Hero Profile Header Card
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFEEEFF0)),
-                ),
-                child: Column(
-                  children: [
-                    Stack(
-                      alignment: Alignment.center,
+              Stack(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFEEEFF0)),
+                    ),
+                    child: Column(
                       children: [
-                        CircleAvatar(
-                          radius: 46,
-                          backgroundColor: AppTheme.primaryRed.withOpacity(
-                            0.15,
-                          ),
-                          child: CircleAvatar(
-                            radius: 40,
-                            backgroundColor: Colors.grey.shade300,
-                            backgroundImage: NetworkImage(
-                              'https://ui-avatars.com/api/?name=${Uri.encodeComponent(name)}&background=random',
+                        Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            CircleAvatar(
+                              radius: 46,
+                              backgroundColor: AppTheme.primaryRed.withOpacity(
+                                0.15,
+                              ),
+                              child: CircleAvatar(
+                                radius: 40,
+                                backgroundColor: Colors.grey.shade300,
+                                backgroundImage: NetworkImage(
+                                  'https://ui-avatars.com/api/?name=${Uri.encodeComponent(name)}&background=BE1E2D&color=ffffff',
+                                ),
+                                onBackgroundImageError: (exception, stackTrace) {},
+                              ),
                             ),
-                            onBackgroundImageError: (exception, stackTrace) {},
+                            StreamBuilder<DocumentSnapshot>(
+                              stream: FirebaseFirestore.instance.collection('users').doc(email).snapshots(),
+                              builder: (context, userSnap) {
+                                String tier = 'Free';
+                                if (userSnap.hasData && userSnap.data!.exists) {
+                                  tier = (userSnap.data!.data() as Map<String, dynamic>)['subscriptionTier'] ?? 'Free';
+                                }
+                                
+                                if (tier == 'Free') {
+                                  return Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: const BoxDecoration(
+                                        color: AppTheme.secondaryGold,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        LucideIcons.check,
+                                        size: 14,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  );
+                                }
+
+                                return Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: tier == 'Tutor Pro' ? AppTheme.primaryRed : AppTheme.secondaryGold,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white, width: 2),
+                                    ),
+                                    child: Icon(
+                                      tier == 'Tutor Pro' ? Icons.stars : LucideIcons.award,
+                                      size: 16,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          name,
+                          style: GoogleFonts.manrope(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.neutralColor,
                           ),
                         ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(
-                              color: AppTheme.secondaryGold,
-                              shape: BoxShape.circle,
+                        Text(
+                          program,
+                          style: GoogleFonts.manrope(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        if (college.isNotEmpty && college != 'Select Department') ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            college,
+                            style: GoogleFonts.manrope(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryRed,
                             ),
-                            child: const Icon(
-                              LucideIcons.check,
-                              size: 14,
-                              color: Colors.white,
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                        if (studentId.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F3F5),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'STUDENT ID: $studentId',
+                              style: GoogleFonts.manrope(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF495057),
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        Text(
+                          email,
+                          style: GoogleFonts.manrope(
+                            fontSize: 12,
+                            color: Colors.grey.shade400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: IconButton(
+                      icon: const Icon(
+                        LucideIcons.pencil,
+                        size: 18,
+                        color: Colors.grey,
+                      ),
+                      onPressed: () {
+                        _showEditProfileModal(context, email, name, program, college, hasFirebase);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Subscription Upgrade Section
+              StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance.collection('users').doc(email).snapshots(),
+                builder: (context, userSnap) {
+                  bool isSubscribed = false;
+                  if (userSnap.hasData && userSnap.data!.exists) {
+                    isSubscribed = (userSnap.data!.data() as Map<String, dynamic>)['isSubscribed'] ?? false;
+                  }
+
+                  if (isSubscribed) return const SizedBox.shrink();
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 24),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF1A1C1E), Color(0xFF2D3136)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: AppTheme.secondaryGold.withOpacity(0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(LucideIcons.sparkles, color: AppTheme.secondaryGold, size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Learner Lite',
+                              style: GoogleFonts.manrope(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              '₱49/mo',
+                              style: GoogleFonts.manrope(
+                                color: AppTheme.secondaryGold,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _buildSubscriptionBenefit(LucideIcons.check, 'Premium Learner Badge'),
+                        _buildSubscriptionBenefit(LucideIcons.check, 'Up to 5 active bookings'),
+                        _buildSubscriptionBenefit(LucideIcons.check, 'Priority "Urgent" request tag'),
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const SubscriptionPaymentScreen(
+                                    planName: 'Learner Lite',
+                                    amount: 49.0,
+                                    isTutor: false,
+                                  ),
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryRed,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              elevation: 0,
+                            ),
+                            child: Text(
+                              'Upgrade Now',
+                              style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      name,
-                      style: GoogleFonts.manrope(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.neutralColor,
-                      ),
-                    ),
-                    Text(
-                      program,
-                      style: GoogleFonts.manrope(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      email,
-                      style: GoogleFonts.manrope(
-                        fontSize: 12,
-                        color: Colors.grey.shade400,
-                      ),
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
-              const SizedBox(height: 16),
 
               // Learning Statistics Section
               _buildSectionTitle('Learning Statistics'),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      'Completed',
-                      isNewAccount ? '0 Sessions' : '12 Sessions',
-                      LucideIcons.checkCircle2,
-                      AppTheme.primaryRed,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildStatCard(
-                      'Duration',
-                      isNewAccount ? '0 Hours' : '24.5 Hours',
-                      LucideIcons.clock,
-                      AppTheme.tertiaryIndigo,
-                    ),
-                  ),
-                ],
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('bookings')
+                    .where('status', isEqualTo: 'Completed')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  int sessions = 0;
+                  double totalHours = 0;
+
+                  if (snapshot.hasData) {
+                    final String userEmail = email.toLowerCase();
+                    // Filter in code to support legacy 'learnerEmail' or 'studentEmail' 
+                    // and to handle potential case sensitivity issues in legacy data
+                    final userBookings = snapshot.data!.docs.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final sEmail = (data['studentEmail'] ?? '').toString().toLowerCase();
+                      final lEmail = (data['learnerEmail'] ?? '').toString().toLowerCase();
+                      return sEmail == userEmail || lEmail == userEmail;
+                    }).toList();
+
+                    sessions = userBookings.length;
+                    for (var doc in userBookings) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      // Default to 1 hour if duration is missing for completed sessions
+                      totalHours += (data['duration'] ?? 1).toDouble();
+                    }
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
+                          'Completed',
+                          '$sessions Sessions',
+                          LucideIcons.checkCircle2,
+                          AppTheme.primaryRed,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildStatCard(
+                          'Duration',
+                          '${totalHours.toStringAsFixed(totalHours % 1 == 0 ? 0 : 1)} Hours',
+                          LucideIcons.clock,
+                          AppTheme.tertiaryIndigo,
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 24),
 
@@ -249,8 +478,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         children: [
                           for (int i = 0; i < goalsList.length; i++) ...[
                             _buildGoalItem(
+                              i,
                               goalsList[i]['title'] ?? '',
                               'Target: ${goalsList[i]['target'] ?? ''}',
+                              email,
+                              hasFirebase,
+                              goalsList,
                             ),
                             if (i < goalsList.length - 1)
                               const Divider(
@@ -268,8 +501,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   _buildSectionTitle('Active Bookings'),
-                  if (!isNewAccount)
-                    Text(
+                  GestureDetector(
+                    onTap: () {
+                      final state = context.findAncestorStateOfType<StudentLayoutState>();
+                      if (state != null) {
+                        state.setIndex(1);
+                      }
+                    },
+                    child: Text(
                       'View All',
                       style: GoogleFonts.manrope(
                         fontSize: 13,
@@ -277,27 +516,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: AppTheme.primaryRed,
                       ),
                     ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
-              if (isNewAccount)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Text(
-                      'No active bookings.',
-                      style: GoogleFonts.manrope(
-                        fontSize: 14,
-                        color: Colors.grey.shade500,
-                        fontWeight: FontWeight.w500,
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('bookings')
+                    .where('studentEmail', isEqualTo: email.toLowerCase())
+                    .where('isUpcoming', isEqualTo: true)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppTheme.primaryRed,
+                        ),
                       ),
-                    ),
-                  ),
-                )
-              else
-                ...MockData.learnerBookings.map(
-                  (booking) => _buildBookingCard(booking),
-                ),
+                    );
+                  }
+
+                  final docs = snapshot.data?.docs ?? [];
+                  if (docs.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Text(
+                          'No active bookings.',
+                          style: GoogleFonts.manrope(
+                            fontSize: 14,
+                            color: Colors.grey.shade500,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    children: docs.take(3).map((doc) {
+                      final booking = doc.data() as Map<String, dynamic>;
+                      return _buildBookingCard(booking);
+                    }).toList(),
+                  );
+                },
+              ),
               const SizedBox(height: 24),
 
               // Favorite Tutors Section
@@ -357,27 +623,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             }
                           }
 
-                          if (isApproved) {
+                            if (isApproved) {
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 12),
                               child: ElevatedButton.icon(
-                                onPressed: () {
-                                  // Also ensure the role is set to tutor
+                                onPressed: () async {
+                                  // Also ensure the role is set to tutor and save lastPortal
                                   if (hasFirebase) {
-                                    FirebaseFirestore.instance
+                                    await FirebaseFirestore.instance
                                         .collection('users')
                                         .doc(email)
                                         .set({
                                           'role': 'tutor',
+                                          'lastPortal': 'tutor',
                                         }, SetOptions(merge: true));
                                   }
-                                  Navigator.pushAndRemoveUntil(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => const TutorLayout(),
-                                    ),
-                                    (route) => false,
-                                  );
+                                  if (context.mounted) {
+                                    Navigator.pushAndRemoveUntil(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const TutorLayout(),
+                                      ),
+                                      (route) => false,
+                                    );
+                                  }
                                 },
                                 icon: const Icon(
                                   LucideIcons.briefcase,
@@ -915,14 +1184,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Mode Switcher Button
               if (role == 'tutor') ...[
                 ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const TutorLayout(),
-                      ),
-                      (route) => false,
-                    );
+                  onPressed: () async {
+                    if (hasFirebase) {
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(email)
+                          .set({
+                        'lastPortal': 'tutor',
+                      }, SetOptions(merge: true));
+                    }
+                    if (context.mounted) {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const TutorLayout(),
+                        ),
+                        (route) => false,
+                      );
+                    }
                   },
                   icon: const Icon(LucideIcons.briefcase, size: 18),
                   label: Text(
@@ -943,6 +1222,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
 
               // Settings Options
+              _buildSettingsItem(
+                context,
+                LucideIcons.sparkles,
+                'Manage Subscription',
+                onTap: () {
+                  _showSubscriptionModal(context, email, name, false);
+                },
+              ),
               _buildSettingsItem(
                 context,
                 LucideIcons.settings,
@@ -1040,7 +1327,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (_) {}
 
-    final String email = user?.email ?? 'tutor@umindanao.edu.ph';
+    final String email = (user?.email ?? 'tutor@umindanao.edu.ph').toLowerCase();
 
     final stream = hasFirebase
         ? FirebaseFirestore.instance.collection('users').doc(email).snapshots()
@@ -1051,11 +1338,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context, snapshot) {
         String name = 'Peer Tutor';
         String program = 'University of Mindanao';
+        String tutorAbout = '';
+        List<String> tutorExpertise = [];
+        String tutorAvailabilityDays = '';
+        String tutorAvailabilityHours = '';
+        String tutorAvailabilityType = 'NOT SET';
 
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>;
           name = data['name'] ?? name;
           program = data['program'] ?? data['course'] ?? program;
+          tutorAbout = data['tutorAbout'] ?? data['about'] ?? tutorAbout;
+          if (data['tutorExpertise'] != null) {
+            tutorExpertise = List<String>.from(data['tutorExpertise']);
+          } else if (data['expertise'] != null) {
+            tutorExpertise = List<String>.from(data['expertise']);
+          }
+          tutorAvailabilityDays = data['tutorAvailabilityDays'] ?? data['availabilityDays'] ?? tutorAvailabilityDays;
+          tutorAvailabilityHours = data['tutorAvailabilityHours'] ?? data['availabilityHours'] ?? tutorAvailabilityHours;
+          tutorAvailabilityType = data['tutorAvailabilityType'] ?? data['availabilityType'] ?? tutorAvailabilityType;
         } else {
           if (user?.displayName != null && user!.displayName!.isNotEmpty) {
             name = user.displayName!;
@@ -1170,6 +1471,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         );
                       },
                     ),
+              IconButton(
+                icon: const Icon(
+                  LucideIcons.pencil,
+                  color: AppTheme.primaryRed,
+                  size: 20,
+                ),
+                onPressed: () {
+                  _showEditProfileModal(
+                    context,
+                    email,
+                    name,
+                    program,
+                    '',
+                    hasFirebase,
+                    isTutorMode: true,
+                    currentAbout: tutorAbout,
+                    currentExpertise: tutorExpertise,
+                    currentDays: tutorAvailabilityDays,
+                    currentHours: tutorAvailabilityHours,
+                    currentType: tutorAvailabilityType,
+                  );
+                },
+              ),
               const SizedBox(width: 8),
             ],
           ),
@@ -1209,7 +1533,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     radius: 54,
                                     backgroundColor: Colors.grey.shade300,
                                     backgroundImage: NetworkImage(
-                                      'https://ui-avatars.com/api/?name=${Uri.encodeComponent(name)}&background=random',
+                                      'https://ui-avatars.com/api/?name=${Uri.encodeComponent(name)}&background=BE1E2D&color=ffffff',
                                     ),
                                     onBackgroundImageError:
                                         (exception, stackTrace) {},
@@ -1218,17 +1542,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 Positioned(
                                   bottom: 2,
                                   right: 2,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: const BoxDecoration(
-                                      color: Color(0xFFFBB03B),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(
-                                      LucideIcons.award,
-                                      color: Colors.white,
-                                      size: 16,
-                                    ),
+                                  child: StreamBuilder<DocumentSnapshot>(
+                                    stream: FirebaseFirestore.instance.collection('users').doc(email).snapshots(),
+                                    builder: (context, userSnap) {
+                                      String tier = 'Free';
+                                      if (userSnap.hasData && userSnap.data!.exists) {
+                                        tier = (userSnap.data!.data() as Map<String, dynamic>)['subscriptionTier'] ?? 'Free';
+                                      }
+                                      
+                                      return Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: tier == 'Tutor Pro' ? AppTheme.primaryRed : const Color(0xFFFBB03B),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: Colors.white, width: 2),
+                                        ),
+                                        child: Icon(
+                                          tier == 'Tutor Pro' ? Icons.stars : LucideIcons.award,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ),
                               ],
@@ -1288,6 +1623,101 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 28),
 
+                      // Subscription Upgrade Section (Tutor)
+                      StreamBuilder<DocumentSnapshot>(
+                        stream: FirebaseFirestore.instance.collection('users').doc(email).snapshots(),
+                        builder: (context, userSnap) {
+                          bool isSubscribed = false;
+                          if (userSnap.hasData && userSnap.data!.exists) {
+                            isSubscribed = (userSnap.data!.data() as Map<String, dynamic>)['isSubscribed'] ?? false;
+                          }
+
+                          if (isSubscribed) return const SizedBox.shrink();
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 24),
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF1A1C1E), Color(0xFF2D3136)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.secondaryGold.withOpacity(0.2),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(LucideIcons.zap, color: AppTheme.secondaryGold, size: 20),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      'Tutor Pro',
+                                      style: GoogleFonts.manrope(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      '₱99/mo',
+                                      style: GoogleFonts.manrope(
+                                        color: AppTheme.secondaryGold,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                _buildSubscriptionBenefit(LucideIcons.check, 'Featured Tutor Badge'),
+                                _buildSubscriptionBenefit(LucideIcons.check, 'Rank higher in search results'),
+                                _buildSubscriptionBenefit(LucideIcons.check, 'Up to 5 subject listings'),
+                                _buildSubscriptionBenefit(LucideIcons.check, '3% Commission (Keep more pay)'),
+                                const SizedBox(height: 20),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => const SubscriptionPaymentScreen(
+                                            planName: 'Tutor Pro',
+                                            amount: 99.0,
+                                            isTutor: true,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.primaryRed,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      elevation: 0,
+                                    ),
+                                    child: Text(
+                                      'Upgrade to Pro',
+                                      style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+
                       // "About Me" Card
                       Container(
                         padding: const EdgeInsets.all(18),
@@ -1318,16 +1748,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     color: const Color(0xFF1A1C1E),
                                   ),
                                 ),
+                                const Spacer(),
+                                GestureDetector(
+                                  onTap: () {
+                                    _showEditTutorProfileDialog(
+                                      context: context,
+                                      email: email,
+                                      currentAbout: tutorAbout,
+                                      currentExpertise: tutorExpertise,
+                                      currentDays: tutorAvailabilityDays,
+                                      currentHours: tutorAvailabilityHours,
+                                      currentType: tutorAvailabilityType,
+                                    );
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFEE2E2),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Icon(
+                                      LucideIcons.edit2,
+                                      color: AppTheme.primaryRed,
+                                      size: 14,
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              'Third-year Engineering student with a passion for deconstructing complex structural concepts. I believe peer tutoring is the most effective way to master challenging STEM subjects while building university camaraderie.',
+                              tutorAbout.isEmpty 
+                                ? 'Your profile bio is empty. Tap the edit icon to tell students about yourself!' 
+                                : tutorAbout,
                               style: GoogleFonts.manrope(
                                 fontSize: 13,
                                 height: 1.5,
-                                color: const Color(0xFF495057),
-                                fontWeight: FontWeight.w500,
+                                color: tutorAbout.isEmpty ? Colors.grey : const Color(0xFF495057),
+                                fontWeight: tutorAbout.isEmpty ? FontWeight.w400 : FontWeight.w500,
+                                fontStyle: tutorAbout.isEmpty ? FontStyle.italic : FontStyle.normal,
                               ),
                             ),
                           ],
@@ -1374,17 +1833,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                   const SizedBox(height: 12),
                                   Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        _buildExpertiseItem('Calculus II'),
-                                        const SizedBox(height: 6),
-                                        _buildExpertiseItem('Physics'),
-                                        const SizedBox(height: 6),
-                                        _buildExpertiseItem('Eng. Mech.'),
-                                      ],
-                                    ),
+                                    child: tutorExpertise.isEmpty
+                                      ? Center(
+                                          child: Text(
+                                            'No expertise listed',
+                                            style: GoogleFonts.manrope(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                              fontStyle: FontStyle.italic,
+                                            ),
+                                          ),
+                                        )
+                                      : Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: tutorExpertise.take(3).map((item) => Padding(
+                                            padding: const EdgeInsets.only(bottom: 6.0),
+                                            child: _buildExpertiseItem(item),
+                                          )).toList(),
+                                        ),
                                   ),
                                 ],
                               ),
@@ -1426,20 +1893,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                   const SizedBox(height: 12),
                                   Text(
-                                    'Mon - Fri',
+                                    tutorAvailabilityDays.isEmpty ? 'Not set' : tutorAvailabilityDays,
                                     style: GoogleFonts.manrope(
                                       fontWeight: FontWeight.w700,
                                       fontSize: 13,
-                                      color: const Color(0xFF1A1C1E),
+                                      color: tutorAvailabilityDays.isEmpty ? Colors.grey : const Color(0xFF1A1C1E),
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                   Text(
-                                    'After 5:00 PM',
+                                    tutorAvailabilityHours.isEmpty ? 'Tap to edit' : tutorAvailabilityHours,
                                     style: GoogleFonts.manrope(
                                       fontSize: 12,
                                       color: const Color(0xFF7A7C80),
                                       fontWeight: FontWeight.w500,
+                                      fontStyle: tutorAvailabilityHours.isEmpty ? FontStyle.italic : FontStyle.normal,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                   const Spacer(),
                                   Container(
@@ -1448,13 +1920,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       vertical: 5,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFFFEF3C7),
+                                      color: tutorAvailabilityType == 'NOT SET' ? Colors.grey.shade100 : const Color(0xFFFEF3C7),
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(
-                                      'ON-CAMPUS ONLY',
+                                      tutorAvailabilityType.toUpperCase(),
                                       style: GoogleFonts.manrope(
-                                        color: const Color(0xFFD97706),
+                                        color: tutorAvailabilityType == 'NOT SET' ? Colors.grey : const Color(0xFFD97706),
                                         fontWeight: FontWeight.w900,
                                         fontSize: 8.5,
                                         letterSpacing: 0.2,
@@ -1470,75 +1942,175 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 28),
 
-                      // Reviews Section
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Student Reviews',
-                            style: GoogleFonts.manrope(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: const Color(0xFF1A1C1E),
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Viewing all 28 student reviews.',
-                                    style: GoogleFonts.manrope(),
+                      // Dynamic Reviews Section from Firestore
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(email)
+                            .collection('reviews')
+                            .orderBy('timestamp', descending: true)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16.0),
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppTheme.primaryRed,
                                   ),
-                                  backgroundColor: AppTheme.neutralColor,
-                                  behavior: SnackBarBehavior.floating,
                                 ),
-                              );
-                            },
-                            child: Text(
-                              'View All',
-                              style: GoogleFonts.manrope(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.primaryRed,
                               ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
+                            );
+                          }
 
-                      _buildTutorReviewCard(
-                        initials: 'RJ',
-                        avatarColor: const Color(0xFFE2E8F0),
-                        name: 'Ricardo J.',
-                        stars: 5,
-                        time: '2 days ago',
-                        comment:
-                            'Maria made integration by parts look easy! Highly recommend for Calc II.',
-                      ),
-                      const SizedBox(height: 10),
-                      _buildTutorReviewCard(
-                        initials: 'EL',
-                        avatarColor: const Color(0xFFDCFCE7),
-                        name: 'Elena L.',
-                        stars: 5,
-                        time: '1 week ago',
-                        comment:
-                            'Clear explanations and very patient during physics drills.',
+                          final reviewDocs = snapshot.data?.docs ?? [];
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Student Reviews',
+                                    style: GoogleFonts.manrope(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                      color: const Color(0xFF1A1C1E),
+                                    ),
+                                  ),
+                                  if (reviewDocs.isNotEmpty)
+                                    GestureDetector(
+                                      onTap: () {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Viewing all ${reviewDocs.length} student reviews.',
+                                              style: GoogleFonts.manrope(),
+                                            ),
+                                            backgroundColor: AppTheme.neutralColor,
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                      },
+                                      child: Text(
+                                        'View All',
+                                        style: GoogleFonts.manrope(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppTheme.primaryRed,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              if (reviewDocs.isEmpty)
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: const Color(0xFFEEEFF0), width: 1),
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        LucideIcons.messageSquare,
+                                        color: Colors.grey.shade400,
+                                        size: 28,
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        'No reviews yet',
+                                        style: GoogleFonts.manrope(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: const Color(0xFF495057),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Share your knowledge to earn feedback!',
+                                        style: GoogleFonts.manrope(
+                                          fontSize: 11,
+                                          color: const Color(0xFF7A7C80),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else
+                                ...reviewDocs.take(3).map((doc) {
+                                  final rev = doc.data() as Map<String, dynamic>;
+                                  final rName = rev['studentName'] ?? 'Anonymous student';
+                                  final rComment = rev['comment'] ?? '';
+                                  final rStars = rev['rating'] ?? 5;
+                                  final initials = rName.isNotEmpty 
+                                      ? rName.substring(0, (rName.length > 2 ? 2 : rName.length)).toUpperCase() 
+                                      : 'ST';
+                                  
+                                  String rTime = 'Just now';
+                                  if (rev['timestamp'] != null) {
+                                    final ts = rev['timestamp'] as Timestamp;
+                                    final diff = DateTime.now().difference(ts.toDate());
+                                    if (diff.inDays > 7) {
+                                      rTime = '${(diff.inDays / 7).floor()} weeks ago';
+                                    } else if (diff.inDays > 0) {
+                                      rTime = '${diff.inDays} days ago';
+                                    } else if (diff.inHours > 0) {
+                                      rTime = '${diff.inHours} hours ago';
+                                    } else if (diff.inMinutes > 0) {
+                                      rTime = '${diff.inMinutes} minutes ago';
+                                    }
+                                  }
+
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: _buildTutorReviewCard(
+                                      initials: initials,
+                                      avatarColor: const Color(0xFFE2E8F0),
+                                      name: rName,
+                                      stars: rStars is int ? rStars : 5,
+                                      time: rTime,
+                                      comment: rComment,
+                                    ),
+                                  );
+                                }).toList(),
+                            ],
+                          );
+                        },
                       ),
                       const SizedBox(height: 24),
 
                       // Switch Mode
                       ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const StudentLayout(),
-                            ),
-                            (route) => false,
-                          );
+                        onPressed: () async {
+                          if (hasFirebase) {
+                            await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(email)
+                                .set({
+                              'lastPortal': 'student',
+                            }, SetOptions(merge: true));
+                          }
+                          if (context.mounted) {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const StudentLayout(),
+                              ),
+                              (route) => false,
+                            );
+                          }
                         },
                         icon: const Icon(LucideIcons.graduationCap, size: 18),
                         label: Text(
@@ -1559,6 +2131,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 12),
 
+                      _buildSettingsItem(
+                        context,
+                        LucideIcons.sparkles,
+                        'Manage Subscription',
+                        onTap: () {
+                          _showSubscriptionModal(context, email, name, true);
+                        },
+                      ),
                       _buildSettingsItem(
                         context,
                         LucideIcons.settings,
@@ -1704,6 +2284,359 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildSubscriptionBenefit(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(icon, color: AppTheme.secondaryGold, size: 14),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: GoogleFonts.manrope(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleUpgrade(BuildContext context, String email, String plan, double amount) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator(color: AppTheme.primaryRed)),
+    );
+
+    try {
+      final now = DateTime.now();
+      final expiry = DateTime(now.year, now.month + 1, now.day);
+
+      // 1. Update User Document - use subscriptionTier for consistency with details screen
+      await FirebaseFirestore.instance.collection('users').doc(email.toLowerCase()).set({
+        'isSubscribed': true,
+        'subscriptionTier': plan,
+        'subscriptionPlan': plan,
+        'commissionRate': plan == 'Tutor Pro' ? 0.03 : 0.05,
+      }, SetOptions(merge: true));
+
+      // 2. Add to Subscriptions Collection (for Admin to see)
+      await FirebaseFirestore.instance.collection('subscriptions').add({
+        'userName': email.split('@')[0].replaceAll('.', ' ').toUpperCase(),
+        'userEmail': email.toLowerCase(),
+        'tutorName': email.split('@')[0].replaceAll('.', ' ').toUpperCase(), 
+        'tutorEmail': email.toLowerCase(),
+        'plan': plan,
+        'amount': amount, // Store as number for admin stats
+        'status': 'Active',
+        'billingCycle': 'Monthly',
+        'nextBilling': Timestamp.fromDate(expiry),
+        'subscribedAt': FieldValue.serverTimestamp(),
+      });
+
+      // 3. Log to Transactions (for Admin revenue tracking)
+      await FirebaseFirestore.instance.collection('transactions').add({
+        'user': email.toLowerCase(),
+        'amount': amount,
+        'type': 'Subscription: $plan',
+        'status': 'Completed',
+        'date': FieldValue.serverTimestamp(),
+      });
+
+      if (context.mounted) {
+        Navigator.pop(context); // Pop loading
+        Navigator.pop(context); // Pop modal if open
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Welcome to $plan! Features activated.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Pop loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upgrade failed: $e'), backgroundColor: AppTheme.primaryRed),
+        );
+      }
+    }
+  }
+
+  void _showSubscriptionModal(BuildContext context, String email, String name, bool isTutor) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('users').doc(email).snapshots(),
+          builder: (context, snapshot) {
+            String currentTier = 'Free';
+            bool isSubscribed = false;
+            if (snapshot.hasData && snapshot.data!.exists) {
+              final data = snapshot.data!.data() as Map<String, dynamic>;
+              currentTier = data['subscriptionTier'] ?? data['subscriptionPlan'] ?? 'Free';
+              isSubscribed = data['isSubscribed'] ?? false;
+            }
+
+            return Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        isTutor ? 'Tutor Pro Subscription' : 'Learner Lite Subscription',
+                        style: GoogleFonts.manrope(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.neutralColor,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(LucideIcons.x, color: Colors.grey),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    isTutor 
+                      ? 'Boost your tutoring visibility and keep more of your earnings.'
+                      : 'Unlock priority requests and extended booking limits.',
+                    style: GoogleFonts.manrope(fontSize: 14, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  if (!isTutor)
+                    // Learner Lite Card
+                    _buildTierCard(
+                      context,
+                      title: 'Learner Lite',
+                      price: '₱49/mo',
+                      benefits: [
+                        'Premium Learner Badge',
+                        'Up to 5 active bookings',
+                        'Priority "Urgent" request tag',
+                      ],
+                      color: AppTheme.secondaryGold,
+                      isCurrent: currentTier == 'Learner Lite',
+                      onUpgrade: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SubscriptionPaymentScreen(
+                              planName: 'Learner Lite',
+                              amount: 49.0,
+                              isTutor: false,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  
+                  if (isTutor)
+                    // Tutor Pro Card
+                    _buildTierCard(
+                      context,
+                      title: 'Tutor Pro',
+                      price: '₱99/mo',
+                      benefits: [
+                        'Featured Tutor Badge',
+                        'Rank higher in search results',
+                        'Up to 5 subject listings',
+                        '3% Commission (Keep more pay)',
+                      ],
+                      color: AppTheme.primaryRed,
+                      isCurrent: currentTier == 'Tutor Pro',
+                      onUpgrade: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SubscriptionPaymentScreen(
+                              planName: 'Tutor Pro',
+                              amount: 99.0,
+                              isTutor: true,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  
+                  const SizedBox(height: 24),
+                  if (isSubscribed && ((isTutor && currentTier == 'Tutor Pro') || (!isTutor && currentTier == 'Learner Lite')))
+                    Center(
+                      child: TextButton(
+                        onPressed: () => _handleCancellation(context, email, currentTier),
+                        child: Text(
+                          'Cancel Subscription',
+                          style: GoogleFonts.manrope(color: Colors.grey, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _handleCancellation(BuildContext context, String email, String currentTier) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator(color: AppTheme.primaryRed)),
+    );
+
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+
+      // 1. Update User Document
+      batch.set(
+        FirebaseFirestore.instance.collection('users').doc(email.toLowerCase()),
+        {
+          'isSubscribed': false,
+          'subscriptionTier': 'Free',
+          'subscriptionPlan': 'Free',
+          'commissionRate': 0.05,
+        },
+        SetOptions(merge: true),
+      );
+
+      // 2. Add Transaction Log (Optional: show as Cancelled)
+      final transRef = FirebaseFirestore.instance.collection('transactions').doc();
+      batch.set(transRef, {
+        'id': transRef.id,
+        'user': email.toLowerCase(),
+        'amount': 0.0,
+        'type': 'Subscription Cancelled: $currentTier',
+        'status': 'Cancelled',
+        'date': FieldValue.serverTimestamp(),
+      });
+
+      // 3. Update active subscription record in database
+      final subDocs = await FirebaseFirestore.instance
+          .collection('subscriptions')
+          .where('userEmail', isEqualTo: email.toLowerCase())
+          .where('status', isEqualTo: 'Active')
+          .get();
+      
+      for (var doc in subDocs.docs) {
+        batch.update(doc.reference, {'status': 'Cancelled', 'cancelledAt': FieldValue.serverTimestamp()});
+      }
+
+      await batch.commit();
+
+      // 4. Notify Admin about the cancellation
+      await NotificationService.sendAdminNotification(
+        'Subscription Cancelled ⚠️',
+        '$email has cancelled their $currentTier subscription.',
+        'subscription_cancelled',
+      );
+
+      if (context.mounted) {
+        Navigator.pop(context); // Pop loading
+        Navigator.pop(context); // Pop modal
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Subscription successfully cancelled.'),
+            backgroundColor: AppTheme.neutralColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Pop loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cancellation failed: $e'), backgroundColor: AppTheme.primaryRed),
+        );
+      }
+    }
+  }
+
+  Widget _buildTierCard(
+    BuildContext context, {
+    required String title,
+    required String price,
+    required List<String> benefits,
+    required Color color,
+    required bool isCurrent,
+    required VoidCallback onUpgrade,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1C1E),
+        borderRadius: BorderRadius.circular(16),
+        border: isCurrent ? Border.all(color: color, width: 2) : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                title,
+                style: GoogleFonts.manrope(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                price,
+                style: GoogleFonts.manrope(
+                  color: color,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...benefits.map((b) => _buildSubscriptionBenefit(LucideIcons.check, b)).toList(),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: isCurrent ? null : onUpgrade,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isCurrent ? Colors.grey : AppTheme.primaryRed,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: Colors.grey.withOpacity(0.3),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                elevation: 0,
+              ),
+              child: Text(
+                isCurrent ? 'Current Plan' : 'Upgrade Now',
+                style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTutorReviewCard({
     required String initials,
     required Color avatarColor,
@@ -1845,7 +2778,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildGoalItem(String text, String target) {
+  Widget _buildGoalItem(int index, String text, String target, String email, bool hasFirebase, List<dynamic> goalsList) {
     return Row(
       children: [
         Expanded(
@@ -1886,7 +2819,300 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
         ),
+        const SizedBox(width: 10),
+        IconButton(
+          icon: const Icon(
+            LucideIcons.pencil,
+            size: 16,
+            color: Colors.grey,
+          ),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          onPressed: () {
+            _showEditGoalModal(context, index, text, target.replaceAll('Target: ', ''), email, hasFirebase, goalsList);
+          },
+        ),
+        const SizedBox(width: 12),
+        IconButton(
+          icon: Icon(
+            LucideIcons.trash2,
+            size: 16,
+            color: Colors.red.shade400,
+          ),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          onPressed: () {
+            _showDeleteGoalConfirmation(context, index, text, email, hasFirebase, goalsList);
+          },
+        ),
       ],
+    );
+  }
+
+  void _showEditGoalModal(
+    BuildContext context,
+    int index,
+    String currentTitle,
+    String currentTarget,
+    String email,
+    bool hasFirebase,
+    List<dynamic> goalsList,
+  ) {
+    final titleController = TextEditingController(text: currentTitle);
+    final targetController = TextEditingController(text: currentTarget);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            top: 24,
+            left: 24,
+            right: 24,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Edit Academic Goal',
+                style: GoogleFonts.manrope(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.neutralColor,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Update your goal and timeframe settings.',
+                style: GoogleFonts.manrope(
+                  fontSize: 14,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                controller: titleController,
+                decoration: InputDecoration(
+                  labelText: 'Goal Title',
+                  labelStyle: GoogleFonts.manrope(color: Colors.grey.shade500),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade200),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade200),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppTheme.primaryRed),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: targetController,
+                decoration: InputDecoration(
+                  labelText: 'Target Timeframe',
+                  labelStyle: GoogleFonts.manrope(color: Colors.grey.shade500),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade200),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade200),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppTheme.primaryRed),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    final title = titleController.text.trim();
+                    final target = targetController.text.trim();
+                    if (title.isEmpty || target.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Please fill in all fields',
+                            style: GoogleFonts.manrope(),
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+
+                    List<dynamic> updatedGoals = List.from(goalsList);
+                    updatedGoals[index] = {'title': title, 'target': target};
+
+                    if (hasFirebase) {
+                      try {
+                        await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(email)
+                            .set({
+                          'academicGoals': updatedGoals,
+                        }, SetOptions(merge: true));
+                      } catch (e) {
+                        debugPrint('Error updating academic goal: $e');
+                      }
+                    } else {
+                      if (index < MockData.academicGoals.length) {
+                        MockData.academicGoals[index] = {'title': title, 'target': target};
+                      }
+                    }
+
+                    Navigator.pop(context);
+                    setState(() {});
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Goal updated successfully!',
+                          style: GoogleFonts.manrope(),
+                        ),
+                        backgroundColor: AppTheme.primaryRed,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryRed,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'Save Changes',
+                    style: GoogleFonts.manrope(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showDeleteGoalConfirmation(
+    BuildContext context,
+    int index,
+    String title,
+    String email,
+    bool hasFirebase,
+    List<dynamic> goalsList,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Delete Goal',
+            style: GoogleFonts.manrope(
+              fontWeight: FontWeight.bold,
+              color: AppTheme.neutralColor,
+            ),
+          ),
+          content: Text(
+            'Are you sure you want to delete the goal "$title"?',
+            style: GoogleFonts.manrope(
+              fontSize: 14,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.manrope(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                List<dynamic> updatedGoals = List.from(goalsList);
+                updatedGoals.removeAt(index);
+
+                if (hasFirebase) {
+                  try {
+                    await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(email)
+                        .set({
+                      'academicGoals': updatedGoals,
+                    }, SetOptions(merge: true));
+                  } catch (e) {
+                    debugPrint('Error deleting academic goal: $e');
+                  }
+                } else {
+                  if (index < MockData.academicGoals.length) {
+                    MockData.academicGoals.removeAt(index);
+                  }
+                }
+
+                Navigator.pop(context);
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Goal deleted successfully',
+                      style: GoogleFonts.manrope(),
+                    ),
+                    backgroundColor: AppTheme.primaryRed,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryRed,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: Text(
+                'Delete',
+                style: GoogleFonts.manrope(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -2517,6 +3743,369 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showEditTutorProfileDialog({
+    required BuildContext context,
+    required String email,
+    required String currentAbout,
+    required List<String> currentExpertise,
+    required String currentDays,
+    required String currentHours,
+    required String currentType,
+  }) {
+    final aboutController = TextEditingController(text: currentAbout);
+    final expertiseController = TextEditingController(text: currentExpertise.join(', '));
+    final daysController = TextEditingController(text: currentDays);
+    final hoursController = TextEditingController(text: currentHours);
+    String selectedType = currentType.toUpperCase();
+    bool isLoading = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                top: 24,
+                left: 24,
+                right: 24,
+              ),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
+                ),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Edit Tutor Profile',
+                          style: GoogleFonts.manrope(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.neutralColor,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(LucideIcons.x, color: Colors.grey),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Introduction / About Me',
+                      style: GoogleFonts.manrope(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: aboutController,
+                      maxLines: 4,
+                      decoration: InputDecoration(
+                        hintText: 'Describe yourself and your tutoring methodology...',
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade200),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade200),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: AppTheme.primaryRed,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Expertise (comma separated)',
+                      style: GoogleFonts.manrope(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: expertiseController,
+                      decoration: InputDecoration(
+                        hintText: 'e.g. Calculus II, Physics, General Chemistry',
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade200),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade200),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: AppTheme.primaryRed,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Availability Days',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: daysController,
+                                decoration: InputDecoration(
+                                  hintText: 'e.g. Mon - Fri',
+                                  filled: true,
+                                  fillColor: Colors.grey.shade50,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: Colors.grey.shade200),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: Colors.grey.shade200),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(
+                                      color: AppTheme.primaryRed,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Availability Hours',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: hoursController,
+                                decoration: InputDecoration(
+                                  hintText: 'e.g. After 5:00 PM',
+                                  filled: true,
+                                  fillColor: Colors.grey.shade50,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: Colors.grey.shade200),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: Colors.grey.shade200),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(
+                                      color: AppTheme.primaryRed,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Delivery Mode',
+                      style: GoogleFonts.manrope(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: selectedType,
+                          isExpanded: true,
+                          style: GoogleFonts.manrope(
+                            color: AppTheme.neutralColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          icon: const Icon(LucideIcons.chevronDown, size: 18),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'ON-CAMPUS ONLY',
+                              child: Text('ON-CAMPUS ONLY'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'ONLINE ONLY',
+                              child: Text('ONLINE ONLY'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'HYBRID',
+                              child: Text('HYBRID'),
+                            ),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) {
+                              setModalState(() {
+                                selectedType = val;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: isLoading
+                            ? null
+                            : () async {
+                                final newAbout = aboutController.text.trim();
+                                final newExpertiseString = expertiseController.text.trim();
+                                final newDays = daysController.text.trim();
+                                final newHours = hoursController.text.trim();
+
+                                if (newAbout.isEmpty || newExpertiseString.isEmpty || newDays.isEmpty || newHours.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Please fill in all fields',
+                                        style: GoogleFonts.manrope(),
+                                      ),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                final List<String> newExpertise = newExpertiseString
+                                    .split(',')
+                                    .map((e) => e.trim())
+                                    .where((e) => e.isNotEmpty)
+                                    .toList();
+
+                                setModalState(() {
+                                  isLoading = true;
+                                });
+
+                                try {
+                                  await FirebaseFirestore.instance
+                                      .collection('users')
+                                      .doc(email)
+                                      .set({
+                                        'tutorAbout': newAbout,
+                                        'tutorExpertise': newExpertise,
+                                        'tutorAvailabilityDays': newDays,
+                                        'tutorAvailabilityHours': newHours,
+                                        'tutorAvailabilityType': selectedType,
+                                      }, SetOptions(merge: true));
+                                } catch (e) {
+                                  debugPrint('Error updating tutor profile: $e');
+                                }
+
+                                setModalState(() {
+                                  isLoading = false;
+                                });
+
+                                if (context.mounted) {
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Tutor profile updated successfully!',
+                                        style: GoogleFonts.manrope(),
+                                      ),
+                                      backgroundColor: AppTheme.primaryRed,
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryRed,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              )
+                            : Text(
+                                'Save Tutor Details',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },
@@ -3235,5 +4824,459 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       },
     );
+  }
+
+  void _showEditProfileModal(
+    BuildContext context,
+    String email,
+    String currentName,
+    String currentProgram,
+    String currentCollege,
+    bool hasFirebase, {
+    bool isTutorMode = false,
+    String currentAbout = '',
+    List<String> currentExpertise = const [],
+    String currentDays = '',
+    String currentHours = '',
+    String currentType = '',
+  }) {
+    final nameController = TextEditingController(text: currentName);
+    final programController = TextEditingController(text: currentProgram);
+    final collegeController = TextEditingController(text: currentCollege);
+    final aboutController = TextEditingController(text: currentAbout);
+    final expertiseController = TextEditingController(text: currentExpertise.join(', '));
+    final daysController = TextEditingController(text: currentDays);
+    final hoursController = TextEditingController(text: currentHours);
+    final typeController = TextEditingController(text: currentType);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            top: 24,
+            left: 24,
+            right: 24,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+          ),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isTutorMode ? 'Edit Tutor Profile' : 'Edit Profile Info',
+                  style: GoogleFonts.manrope(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.neutralColor,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  isTutorMode
+                      ? 'Update your tutor details and availability settings.'
+                      : 'Update your name, course, and department.',
+                  style: GoogleFonts.manrope(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Full Name',
+                    labelStyle: GoogleFonts.manrope(color: Colors.grey.shade500),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppTheme.primaryRed),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: programController,
+                  decoration: InputDecoration(
+                    labelText: 'Course / Program',
+                    labelStyle: GoogleFonts.manrope(color: Colors.grey.shade500),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppTheme.primaryRed),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: collegeController,
+                  decoration: InputDecoration(
+                    labelText: 'College / Department',
+                    labelStyle: GoogleFonts.manrope(color: Colors.grey.shade500),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppTheme.primaryRed),
+                    ),
+                  ),
+                ),
+                if (isTutorMode) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: aboutController,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: 'About Me (Bio)',
+                      labelStyle: GoogleFonts.manrope(color: Colors.grey.shade500),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.primaryRed),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: expertiseController,
+                    decoration: InputDecoration(
+                      labelText: 'Expertise / Subjects (comma separated)',
+                      labelStyle: GoogleFonts.manrope(color: Colors.grey.shade500),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.primaryRed),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: daysController,
+                    decoration: InputDecoration(
+                      labelText: 'Availability Days (e.g., Mon - Fri)',
+                      labelStyle: GoogleFonts.manrope(color: Colors.grey.shade500),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.primaryRed),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: hoursController,
+                    decoration: InputDecoration(
+                      labelText: 'Availability Hours (e.g., After 5:00 PM)',
+                      labelStyle: GoogleFonts.manrope(color: Colors.grey.shade500),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.primaryRed),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: typeController,
+                    decoration: InputDecoration(
+                      labelText: 'Availability Type (e.g., ON-CAMPUS ONLY)',
+                      labelStyle: GoogleFonts.manrope(color: Colors.grey.shade500),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.primaryRed),
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final nameVal = nameController.text.trim();
+                      final progVal = programController.text.trim();
+                      final collVal = collegeController.text.trim();
+                      final aboutVal = aboutController.text.trim();
+                      final expertiseVal = expertiseController.text.trim();
+                      final daysVal = daysController.text.trim();
+                      final hoursVal = hoursController.text.trim();
+                      final typeVal = typeController.text.trim();
+
+                      if (nameVal.isEmpty || progVal.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Name and Course/Program cannot be empty',
+                              style: GoogleFonts.manrope(),
+                            ),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                        return;
+                      }
+
+                      if (hasFirebase) {
+                        try {
+                          final Map<String, dynamic> data = {
+                            'name': nameVal,
+                            'program': progVal,
+                            'college': collVal,
+                          };
+                          if (isTutorMode) {
+                            data['tutorAbout'] = aboutVal;
+                            data['tutorExpertise'] = expertiseVal
+                                .split(',')
+                                .map((e) => e.trim())
+                                .where((e) => e.isNotEmpty)
+                                .toList();
+                            data['tutorAvailabilityDays'] = daysVal;
+                            data['tutorAvailabilityHours'] = hoursVal;
+                            data['tutorAvailabilityType'] = typeVal;
+                          }
+                          await FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(email)
+                              .set(data, SetOptions(merge: true));
+                        } catch (e) {
+                          debugPrint('Error updating profile: $e');
+                        }
+                      }
+
+                      Navigator.pop(context);
+                      setState(() {});
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Profile updated successfully!',
+                            style: GoogleFonts.manrope(),
+                          ),
+                          backgroundColor: AppTheme.primaryRed,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryRed,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Text(
+                      'Save Info',
+                      style: GoogleFonts.manrope(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _healProfileData(
+    String email,
+    String studentId,
+    String cleanedName,
+    String currentName,
+    String currentProgram,
+    String currentCollege,
+  ) async {
+    try {
+      String resolvedCourse = currentProgram;
+      String resolvedDept = currentCollege;
+      String resolvedStudentId = studentId;
+
+      if (resolvedStudentId.isEmpty) {
+        final idMatch = RegExp(r'\.(\d+)@').firstMatch(email);
+        if (idMatch != null) {
+          resolvedStudentId = idMatch.group(1) ?? '';
+        }
+      }
+
+      // 1. Direct document lookup by email
+      var doc = await FirebaseFirestore.instance.collection('student_directory').doc(email).get();
+      Map<String, dynamic>? dirData;
+      if (doc.exists) {
+        dirData = doc.data();
+      } else {
+        // 2. Direct document lookup by lowercase email
+        doc = await FirebaseFirestore.instance.collection('student_directory').doc(email.toLowerCase()).get();
+        if (doc.exists) {
+          dirData = doc.data();
+        } else if (resolvedStudentId.isNotEmpty) {
+          // 3. Direct document lookup by student ID
+          doc = await FirebaseFirestore.instance.collection('student_directory').doc(resolvedStudentId).get();
+          if (doc.exists) {
+            dirData = doc.data();
+          }
+        }
+      }
+
+      // 4. Fallback queries
+      if (dirData == null) {
+        var query = await FirebaseFirestore.instance
+            .collection('student_directory')
+            .where('email', isEqualTo: email)
+            .limit(1)
+            .get();
+        if (query.docs.isNotEmpty) {
+          dirData = query.docs.first.data();
+        } else {
+          query = await FirebaseFirestore.instance
+              .collection('student_directory')
+              .where('email', isEqualTo: email.toLowerCase())
+              .limit(1)
+              .get();
+          if (query.docs.isNotEmpty) {
+            dirData = query.docs.first.data();
+          } else if (resolvedStudentId.isNotEmpty) {
+            query = await FirebaseFirestore.instance
+                .collection('student_directory')
+                .where('studentId', isEqualTo: resolvedStudentId)
+                .limit(1)
+                .get();
+            if (query.docs.isNotEmpty) {
+              dirData = query.docs.first.data();
+            } else {
+              query = await FirebaseFirestore.instance
+                  .collection('student_directory')
+                  .where('id', isEqualTo: resolvedStudentId)
+                  .limit(1)
+                  .get();
+              if (query.docs.isNotEmpty) {
+                dirData = query.docs.first.data();
+              }
+            }
+          }
+        }
+      }
+
+      Map<String, dynamic> updates = {};
+
+      if (dirData != null) {
+        final fetchedCourse = dirData['course'] ?? dirData['program'];
+        final fetchedDept = dirData['department'] ?? dirData['college'];
+        final fetchedName = dirData['name'] ?? dirData['fullName'] ?? dirData['fullname'] ?? dirData['fullName'];
+
+        if (fetchedCourse != null && fetchedCourse.toString().isNotEmpty && fetchedCourse != currentProgram) {
+          updates['program'] = fetchedCourse;
+        }
+        if (fetchedDept != null && fetchedDept.toString().isNotEmpty && fetchedDept != currentCollege) {
+          updates['college'] = fetchedDept;
+        }
+        if (fetchedName != null && fetchedName.toString().isNotEmpty && fetchedName.toString().trim() != currentName) {
+          updates['name'] = fetchedName.toString().trim().toUpperCase();
+        }
+      }
+
+      if (!updates.containsKey('name') && cleanedName != currentName) {
+        updates['name'] = cleanedName;
+      }
+      if (resolvedStudentId.isNotEmpty && studentId != resolvedStudentId) {
+        updates['studentId'] = resolvedStudentId;
+      }
+
+      if (updates.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(email)
+            .set(updates, SetOptions(merge: true));
+      }
+    } catch (e) {
+      debugPrint('Background profile auto-healing warning: $e');
+    }
   }
 }

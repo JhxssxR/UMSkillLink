@@ -76,35 +76,63 @@ class SuperAdminDashboardScreen extends StatelessWidget {
             // Stat Card 4: Platform Revenue / Bookings completed
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
-                  .collection('bookings')
+                  .collection('settings')
+                  .doc('commission_rules')
+                  .collection('rules')
                   .snapshots(),
-              builder: (context, snapshot) {
-                final totalBookings = snapshot.hasData
-                    ? snapshot.data!.docs.length
-                    : 0;
-                double totalRevenue = 0.0;
-                if (snapshot.hasData) {
-                  for (var doc in snapshot.data!.docs) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    final price =
-                        double.tryParse(
-                          (data['price'] ?? '0.0').toString().replaceAll(
-                            '₱',
-                            '',
-                          ),
-                        ) ??
-                        0.0;
-                    // Suppose 5% platform fee
-                    totalRevenue += price * 0.05;
-                  }
-                }
+              builder: (context, rulesSnapshot) {
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('users')
+                      .where('role', isEqualTo: 'tutor')
+                      .snapshots(),
+                  builder: (context, tutorsSnapshot) {
+                    return StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('bookings')
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        final totalBookings = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                        double totalRevenue = 0.0;
+                        double feeRateDisplay = 5.0;
 
-                return _StatCard(
-                  title: 'Commission Earnings (5%)',
-                  value: '₱${totalRevenue.toStringAsFixed(2)}',
-                  trend: '$totalBookings Bookings',
-                  icon: LucideIcons.banknote,
-                  color: AppTheme.primaryRed,
+                        if (snapshot.hasData && tutorsSnapshot.hasData && rulesSnapshot.hasData) {
+                          final tutorSubStatus = {
+                            for (var doc in tutorsSnapshot.data!.docs)
+                              (doc.data() as Map<String, dynamic>)['email']: (doc.data() as Map<String, dynamic>)['isSubscribed'] ?? false
+                          };
+
+                          final rules = {
+                            for (var doc in rulesSnapshot.data!.docs)
+                              doc.id: (doc.data() as Map<String, dynamic>)['rate'] ?? 0.0
+                          };
+
+                          final baseRate = rules['base_fee']?.toDouble() ?? 5.0;
+                          final premiumRate = rules['premium_fee']?.toDouble() ?? 3.0;
+                          feeRateDisplay = baseRate;
+
+                          for (var doc in snapshot.data!.docs) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            final price = double.tryParse((data['price'] ?? '0.0').toString().replaceAll('₱', '')) ?? 0.0;
+                            final tutorEmail = data['tutorEmail'];
+                            
+                            final isSubscribed = tutorSubStatus[tutorEmail] ?? false;
+                            final appliedRate = isSubscribed ? premiumRate : baseRate;
+                            
+                            totalRevenue += price * (appliedRate / 100);
+                          }
+                        }
+
+                        return _StatCard(
+                          title: 'Commission Earnings (Mixed Rate)',
+                          value: '₱${totalRevenue.toStringAsFixed(2)}',
+                          trend: '$totalBookings Bookings',
+                          icon: LucideIcons.banknote,
+                          color: AppTheme.primaryRed,
+                        );
+                      },
+                    );
+                  },
                 );
               },
             ),
@@ -141,9 +169,7 @@ class SuperAdminDashboardScreen extends StatelessWidget {
                             ),
                           ),
                           TextButton(
-                            onPressed: () => onTabChange?.call(
-                              2,
-                            ), // index 2 is Service Approvals Screen
+                            onPressed: () => onTabChange?.call(2), 
                             child: Text(
                               'View All',
                               style: GoogleFonts.manrope(
@@ -154,73 +180,39 @@ class SuperAdminDashboardScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      const Divider(),
-
+                      const SizedBox(height: 16),
                       StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance
                             .collection('tutor_applications')
                             .where('status', isEqualTo: 'pending')
-                            .limit(3)
+                            .limit(5)
                             .snapshots(),
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 32.0),
-                              child: Center(
-                                child: CircularProgressIndicator(
-                                  color: AppTheme.primaryRed,
-                                ),
-                              ),
-                            );
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
                           }
-
-                          final docs = snapshot.data?.docs ?? [];
-
-                          if (docs.isEmpty) {
-                            return Container(
-                              padding: const EdgeInsets.symmetric(vertical: 32),
-                              alignment: Alignment.center,
-                              child: Text(
-                                'No pending reviews right now. Nice job!',
-                                style: GoogleFonts.manrope(
-                                  color: Colors.grey.shade500,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            );
+                          final apps = snapshot.data?.docs ?? [];
+                          if (apps.isEmpty) {
+                            return _buildEmptyState('No pending applications');
                           }
-
-                          return Column(
-                            children: docs.map((doc) {
-                              final data = doc.data() as Map<String, dynamic>;
-                              final name = data['name'] ?? 'Tutor Applicant';
-                              final college =
-                                  data['college'] ?? 'University Department';
-                              final skills = List<String>.from(
-                                data['skills'] ?? [],
+                          return ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: apps.length,
+                            separatorBuilder: (context, index) => const Divider(),
+                            itemBuilder: (context, index) {
+                              final app = apps[index].data() as Map<String, dynamic>;
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: AppTheme.primaryRed.withOpacity(0.1),
+                                  child: Text(app['name']?[0] ?? 'U', style: const TextStyle(color: AppTheme.primaryRed)),
+                                ),
+                                title: Text(app['name'] ?? 'Unknown User', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 14)),
+                                subtitle: Text(app['college'] ?? 'UM College', style: GoogleFonts.manrope(fontSize: 12)),
+                                trailing: const Icon(LucideIcons.chevronRight, size: 16),
+                                contentPadding: EdgeInsets.zero,
                               );
-                              final time = data['submittedAt'] as Timestamp?;
-
-                              String timeLabel = 'Just now';
-                              if (time != null) {
-                                timeLabel = DateFormat(
-                                  'MMM dd',
-                                ).format(time.toDate());
-                              }
-
-                              return _ApprovalItem(
-                                title: name,
-                                provider: college,
-                                category: skills.isNotEmpty
-                                    ? skills.first
-                                    : 'General Skills',
-                                date: timeLabel,
-                                onReview: () => onTabChange?.call(2),
-                              );
-                            }).toList(),
+                            },
                           );
                         },
                       ),
@@ -229,133 +221,82 @@ class SuperAdminDashboardScreen extends StatelessWidget {
                 ),
               ),
             ),
-
             const SizedBox(width: 24),
-
-            // Live Activity Feed from Firestore Audit Logs
+            // Platform Status
             Expanded(
-              child: Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Recent Audit Trails',
-                            style: GoogleFonts.manrope(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              LucideIcons.arrowRight,
-                              size: 18,
-                              color: AppTheme.primaryRed,
-                            ),
-                            onPressed: () =>
-                                onTabChange?.call(5), // index 5 is Audit Logs
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('audit_logs')
-                            .orderBy('timestamp', descending: true)
-                            .limit(4)
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 24),
-                              child: Center(
-                                child: CircularProgressIndicator(
-                                  color: AppTheme.primaryRed,
-                                ),
-                              ),
-                            );
-                          }
-
-                          final docs = snapshot.data?.docs ?? [];
-
-                          if (docs.isEmpty) {
-                            return Container(
-                              padding: const EdgeInsets.symmetric(vertical: 24),
-                              alignment: Alignment.center,
-                              child: Text(
-                                'No system activities logged yet.',
-                                style: GoogleFonts.manrope(
-                                  color: Colors.grey.shade500,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            );
-                          }
-
-                          return Column(
-                            children: docs.map((doc) {
-                              final data = doc.data() as Map<String, dynamic>;
-                              final action =
-                                  data['action'] ?? 'Action performed';
-                              final timeStamp = data['timestamp'] as Timestamp?;
-
-                              String timeLabel = 'Now';
-                              if (timeStamp != null) {
-                                final diff = DateTime.now().difference(
-                                  timeStamp.toDate(),
-                                );
-                                if (diff.inMinutes < 60) {
-                                  timeLabel = '${diff.inMinutes}m ago';
-                                } else if (diff.inHours < 24) {
-                                  timeLabel = '${diff.inHours}h ago';
-                                } else {
-                                  timeLabel = '${diff.inDays}d ago';
-                                }
-                              }
-
-                              IconData icon = LucideIcons.info;
-                              Color iconColor = Colors.blue;
-                              if (action.contains('Approved') ||
-                                  action.contains('tutor')) {
-                                icon = LucideIcons.checkCircle2;
-                                iconColor = Colors.green;
-                              } else if (action.contains('Settings')) {
-                                icon = LucideIcons.settings;
-                                iconColor = AppTheme.secondaryGold;
-                              } else if (action.contains('Deleted') ||
-                                  action.contains('Suspended')) {
-                                icon = LucideIcons.alertTriangle;
-                                iconColor = AppTheme.primaryRed;
-                              }
-
-                              return _ActivityItem(
-                                icon: icon,
-                                label: action,
-                                time: timeLabel,
-                                color: iconColor,
-                              );
-                            }).toList(),
-                          );
-                        },
-                      ),
-                    ],
+              child: Column(
+                children: [
+                  _buildQuickStatusCard(
+                    'System Health',
+                    'Optimal',
+                    LucideIcons.activity,
+                    Colors.green,
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  _buildQuickStatusCard(
+                    'Database Sync',
+                    'Live',
+                    LucideIcons.database,
+                    AppTheme.tertiaryIndigo,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildQuickStatusCard(
+                    'Security',
+                    'SSL Active',
+                    LucideIcons.shieldCheck,
+                    Colors.blue,
+                  ),
+                ],
               ),
             ),
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildEmptyState(String message) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(LucideIcons.inbox, color: Colors.grey.shade300, size: 32),
+            const SizedBox(height: 8),
+            Text(message, style: GoogleFonts.manrope(color: Colors.grey.shade400, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickStatusCard(String title, String status, IconData icon, Color color) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: GoogleFonts.manrope(color: Colors.grey.shade500, fontSize: 11)),
+                Text(status, style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 14)),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -378,178 +319,69 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                value,
-                style: GoogleFonts.manrope(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                title,
-                style: GoogleFonts.manrope(
-                  color: Colors.grey.shade600,
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                trend,
-                style: GoogleFonts.manrope(
-                  color: color,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-      ),
-    );
-  }
-}
-
-class _ApprovalItem extends StatelessWidget {
-  final String title;
-  final String provider;
-  final String category;
-  final String date;
-  final VoidCallback onReview;
-
-  const _ApprovalItem({
-    required this.title,
-    required this.provider,
-    required this.category,
-    required this.date,
-    required this.onReview,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16.0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  title,
-                  style: GoogleFonts.manrope(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
                   ),
+                  child: Icon(icon, color: color, size: 24),
                 ),
-                Text(
-                  '$provider • $category',
-                  style: GoogleFonts.manrope(
-                    color: Colors.grey.shade600,
-                    fontSize: 12,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    trend,
+                    style: GoogleFonts.manrope(
+                      color: AppTheme.primaryRed,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-          Text(
-            date,
-            style: GoogleFonts.manrope(
-              color: Colors.grey.shade500,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(width: 24),
-          ElevatedButton(
-            onPressed: onReview,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryRed,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              minimumSize: Size.zero,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(6),
-              ),
-            ),
-            child: Text(
-              'Review',
+            const SizedBox(height: 20),
+            Text(
+              value,
               style: GoogleFonts.manrope(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1A1C1E),
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActivityItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String time;
-  final Color color;
-
-  const _ActivityItem({
-    required this.icon,
-    required this.label,
-    required this.time,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.manrope(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  time,
-                  style: GoogleFonts.manrope(
-                    fontSize: 10,
-                    color: Colors.grey.shade400,
-                  ),
-                ),
-              ],
+            Text(
+              title,
+              style: GoogleFonts.manrope(
+                fontSize: 13,
+                color: const Color(0xFF7A7C80),
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

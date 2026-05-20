@@ -10,8 +10,11 @@ import '../../models/mock_data.dart';
 import '../../widgets/student_layout.dart';
 import '../../components/custom_app_bar.dart';
 import '../../components/tutor_app_bar.dart';
+import '../../components/notification_bell.dart';
 import 'manage_services_screen.dart';
+import 'tutor_earnings_screen.dart';
 import '../notifications_screen.dart';
+import '../../widgets/tutor_layout.dart';
 
 class TutorDashboardScreen extends StatefulWidget {
   const TutorDashboardScreen({super.key});
@@ -23,6 +26,7 @@ class TutorDashboardScreen extends StatefulWidget {
 class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
   // Wallet state
   double _earnings = 0.00;
+  double _pendingEarnings = 0.00;
   bool _isWithdrawing = false;
   String _growthRate = '0% this month';
 
@@ -34,14 +38,13 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
   // Pending Requests — loaded from MockData
   List<Map<String, dynamic>> _pendingRequests = [];
 
-  // Your Services Catalog is now fetched from Firestore
-
   // Notifications — starts empty
   final List<String> _notifications = [];
 
   // Dynamic user info from Firebase
   String _tutorName = 'Tutor';
   String _tutorEmail = '';
+  bool _isSubscribed = false;
 
   @override
   void initState() {
@@ -67,6 +70,9 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
             if (mounted) {
               setState(() {
                 _tutorName = data['name'] ?? user.displayName ?? 'Tutor';
+                _isSubscribed = data['isSubscribed'] ?? false;
+                _earnings = (data['earnings'] ?? 0.0).toDouble();
+                _pendingEarnings = (data['pendingEarnings'] ?? 0.0).toDouble();
               });
             }
           } else if (user.displayName != null && user.displayName!.isNotEmpty) {
@@ -78,10 +84,12 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
           } else if (user.email != null) {
             // Derive name from email
             final parts = user.email!.split('@')[0].split('.');
-            final derived = parts.map((part) {
-              if (part.isEmpty) return '';
-              return part[0].toUpperCase() + part.substring(1);
-            }).join(' ');
+            final derived = parts
+                .map((part) {
+                  if (part.isEmpty) return '';
+                  return part[0].toUpperCase() + part.substring(1);
+                })
+                .join(' ');
             if (mounted) {
               setState(() {
                 _tutorName = derived;
@@ -155,40 +163,48 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
     });
   }
 
-  void _acceptBooking(Map<String, dynamic> request) {
-    setState(() {
-      _pendingRequests.remove(request);
-      _activeSessions += 1;
-    });
+  void _acceptBooking(Map<String, dynamic> request) async {
+    final double sessionFee = (request['price'] ?? 0.0).toDouble();
+    final String requestId = request['id']?.toString() ?? '';
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(LucideIcons.checkCircle, color: Colors.white, size: 18),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Accepted session request from ${request['name']}!',
-                style: GoogleFonts.manrope(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
+    if (requestId.isNotEmpty && _tutorEmail.isNotEmpty) {
+      await MockData.acceptTutorRequest(requestId, _tutorEmail, sessionFee);
+      await _loadUserInfo();
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(LucideIcons.checkCircle, color: Colors.white, size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Accepted session request from ${request['name'] ?? request['learnerName'] ?? 'Student'}!',
+                  style: GoogleFonts.manrope(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
+          backgroundColor: Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
-        backgroundColor: Colors.green.shade700,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+      );
+    }
   }
 
   void _declineBooking(Map<String, dynamic> request) {
-    setState(() {
-      _pendingRequests.remove(request);
-    });
+    if (request['id'] != null) {
+      FirebaseFirestore.instance
+          .collection('tutor_requests')
+          .doc(request['id'])
+          .update({'status': 'Declined'});
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -198,7 +214,7 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Declined session request from ${request['name']}.',
+                'Declined session request from ${request['name'] ?? request['learnerName'] ?? 'Student'}.',
                 style: GoogleFonts.manrope(
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
@@ -214,211 +230,153 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
     );
   }
 
-  void _showTutorMenuSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 24,
-                      backgroundColor: AppTheme.primaryRed.withOpacity(0.1),
-                      child: const Icon(
-                        LucideIcons.graduationCap,
-                        color: AppTheme.primaryRed,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Tutor Hub Options',
-                          style: GoogleFonts.manrope(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                            color: AppTheme.neutralColor,
-                          ),
-                        ),
-                        Text(
-                          'Select an action to continue',
-                          style: GoogleFonts.manrope(
-                            fontSize: 13,
-                            color: Colors.grey.shade500,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                ListTile(
-                  leading: const Icon(
-                    LucideIcons.arrowLeftRight,
-                    color: AppTheme.primaryRed,
-                  ),
-                  title: Text(
-                    'Switch to Learner Portal',
-                    style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const StudentLayout(),
-                      ),
-                      (route) => false,
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(LucideIcons.wallet, color: Colors.grey),
-                  title: Text(
-                    'Earnings Ledger & Payouts',
-                    style: GoogleFonts.manrope(fontWeight: FontWeight.w600),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Ledger feature details coming soon!',
-                          style: GoogleFonts.manrope(),
-                        ),
-                        backgroundColor: AppTheme.neutralColor,
-                      ),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(LucideIcons.settings, color: Colors.grey),
-                  title: Text(
-                    'Portal Settings',
-                    style: GoogleFonts.manrope(fontWeight: FontWeight.w600),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   void _showNotificationPanel() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const NotificationsScreen(),
+      MaterialPageRoute(builder: (context) => const NotificationsScreen()),
+    );
+  }
+
+  void _showSubscribeDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(LucideIcons.sparkles, color: AppTheme.secondaryGold),
+            const SizedBox(width: 10),
+            Text(
+              'Premium Feature',
+              style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Promoting your services is a premium feature reserved for subscribed tutors.',
+              style: GoogleFonts.manrope(
+                fontSize: 14,
+                color: Colors.grey.shade700,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildBenefitItem(LucideIcons.trendingUp, 'Appear at the top of search results'),
+            _buildBenefitItem(LucideIcons.eye, 'Get up to 5x more profile views'),
+            _buildBenefitItem(LucideIcons.badgeCheck, 'Exclusive "Featured" badge'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Later',
+              style: GoogleFonts.manrope(color: Colors.grey, fontWeight: FontWeight.bold),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              // Simulate subscription process
+              Navigator.pop(context);
+              setState(() => _isLoadingUserInfo = true);
+              
+              if (_tutorEmail.isNotEmpty) {
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(_tutorEmail)
+                    .update({'isSubscribed': true});
+                
+                await _loadUserInfo();
+                
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Subscription successful! You can now promote your services.',
+                        style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+                      ),
+                      backgroundColor: Colors.green.shade600,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              }
+              setState(() => _isLoadingUserInfo = false);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryRed,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: Text(
+              'Subscribe Now',
+              style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  Widget _buildBenefitItem(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: AppTheme.primaryRed),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isLoadingUserInfo = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: TutorAppBar(
+      appBar: const TutorAppBar(
         showBackButton: false,
         centerTitle: false,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 16.0),
-          child: Container(
-            margin: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFFEEEFF0), width: 1.5),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4),
-              ],
-            ),
-            child: Center(
-              child: IconButton(
-                icon: const Icon(
-                  LucideIcons.menu,
-                  color: AppTheme.primaryRed,
-                  size: 16,
-                ),
-                padding: EdgeInsets.zero,
-                onPressed: () => _showTutorMenuSheet(context),
-              ),
-            ),
-          ),
-        ),
-        actions: [
-          Stack(
-            children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: AppTheme.primaryRed.withOpacity(0.15),
-                child: const Icon(
-                  LucideIcons.user,
-                  size: 18,
-                  color: AppTheme.primaryRed,
-                ),
-              ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: Container(
-                  width: 9,
-                  height: 9,
-                  decoration: BoxDecoration(
-                    color: Colors.green,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.5),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 16),
-        ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 16,
-            bottom: 80,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 16),
-              _buildSwitchModeCard(),
-              const SizedBox(height: 20),
-              _buildGreetingPanel(),
-              const SizedBox(height: 20),
-              _buildDoubleHeroCards(),
-              const SizedBox(height: 26),
-              _buildPendingRequestsSection(),
-              const SizedBox(height: 26),
-              _buildYourServicesSection(),
-            ],
-          ),
-        ),
+        child: _isLoadingUserInfo
+            ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryRed))
+            : SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 16,
+                  bottom: 80,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 16),
+                    _buildSwitchModeCard(),
+                    const SizedBox(height: 20),
+                    _buildGreetingPanel(),
+                    const SizedBox(height: 20),
+                    _buildDoubleHeroCards(),
+                    const SizedBox(height: 26),
+                    _buildPendingRequestsSection(),
+                    const SizedBox(height: 26),
+                    _buildYourServicesSection(),
+                  ],
+                ),
+              ),
       ),
-      floatingActionButton: _buildNotificationFab(),
     );
   }
 
@@ -566,118 +524,153 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
         // Total Earnings Card
         Expanded(
           flex: 12,
-          child: Container(
-            height: 172,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFBE1E2D), Color(0xFF90101B)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primaryRed.withOpacity(0.2),
-                  blurRadius: 12,
-                  offset: const Offset(0, 6),
+          child: GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const TutorEarningsScreen(),
                 ),
-              ],
-            ),
-            child: Stack(
-              children: [
-                // Wallet watermark background
-                Positioned(
-                  right: -10,
-                  bottom: -10,
-                  child: Opacity(
-                    opacity: 0.12,
-                    child: Icon(
-                      LucideIcons.wallet,
-                      size: 88,
-                      color: Colors.white.withOpacity(0.8),
+              );
+            },
+            child: Container(
+              height: 172,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFBE1E2D), Color(0xFF90101B)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primaryRed.withOpacity(0.2),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Stack(
+                children: [
+                  // Wallet watermark background
+                  Positioned(
+                    right: -10,
+                    bottom: -10,
+                    child: Opacity(
+                      opacity: 0.12,
+                      child: Icon(
+                        LucideIcons.wallet,
+                        size: 88,
+                        color: Colors.white.withOpacity(0.8),
+                      ),
                     ),
                   ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'TOTAL EARNINGS',
-                      style: GoogleFonts.manrope(
-                        color: Colors.white.withOpacity(0.75),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 11,
-                        letterSpacing: 0.8,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'TOTAL EARNINGS',
+                        style: GoogleFonts.manrope(
+                          color: Colors.white.withOpacity(0.75),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 11,
+                          letterSpacing: 0.8,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '₱${_earnings.toStringAsFixed(2)}',
-                      style: GoogleFonts.manrope(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 22,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.18),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '📈 $_growthRate',
+                      const SizedBox(height: 8),
+                      Text(
+                        '₱${_earnings.toStringAsFixed(2)}',
                         style: GoogleFonts.manrope(
                           color: Colors.white,
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 22,
+                          letterSpacing: -0.5,
                         ),
                       ),
-                    ),
-                    const Spacer(),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 34,
-                      child: ElevatedButton(
-                        onPressed: _isWithdrawing ? null : _withdrawFunds,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: AppTheme.primaryRed,
-                          elevation: 0,
-                          padding: EdgeInsets.zero,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: _isWithdrawing
-                            ? const SizedBox(
-                                height: 16,
-                                width: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    AppTheme.primaryRed,
-                                  ),
-                                ),
-                              )
-                            : Text(
-                                'Withdraw Funds',
+                      if (_pendingEarnings > 0) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'PENDING: ₱${_pendingEarnings.toStringAsFixed(2)}',
                                 style: GoogleFonts.manrope(
+                                  color: Colors.white.withOpacity(0.9),
+                                  fontSize: 9,
                                   fontWeight: FontWeight.w800,
-                                  fontSize: 12,
                                 ),
                               ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '📈 $_growthRate',
+                          style: GoogleFonts.manrope(
+                            color: Colors.white,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                      const Spacer(),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 34,
+                        child: ElevatedButton(
+                          onPressed: _isWithdrawing ? null : _withdrawFunds,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: AppTheme.primaryRed,
+                            elevation: 0,
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: _isWithdrawing
+                              ? const SizedBox(
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      AppTheme.primaryRed,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  'Withdraw Funds',
+                                  style: GoogleFonts.manrope(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -746,16 +739,26 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  _activeSessions < 10
-                      ? '0$_activeSessions'
-                      : '$_activeSessions',
-                  style: GoogleFonts.manrope(
-                    color: AppTheme.neutralColor,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 32,
-                    letterSpacing: -1,
-                  ),
+                StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('tutor_requests')
+                      .where('tutorEmail', isEqualTo: _tutorEmail)
+                      .where('status', isEqualTo: 'Confirmed')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    final confirmedCount = snapshot.data?.docs.length ?? 0;
+                    return Text(
+                      confirmedCount < 10
+                          ? '0$confirmedCount'
+                          : '$confirmedCount',
+                      style: GoogleFonts.manrope(
+                        color: AppTheme.neutralColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 32,
+                        letterSpacing: -1,
+                      ),
+                    );
+                  },
                 ),
                 Text(
                   'Active Sessions',
@@ -819,86 +822,117 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
 
   // --- PENDING REQUESTS SECTION ---
   Widget _buildPendingRequestsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('tutor_requests')
+          .where('tutorEmail', isEqualTo: _tutorEmail)
+          .where('status', isEqualTo: 'Pending')
+          .snapshots(),
+      builder: (context, snapshot) {
+        final pendingRequests = snapshot.data?.docs.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              data['id'] = doc.id;
+              return data;
+            }).toList() ?? [];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Pending Requests',
-              style: GoogleFonts.manrope(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.neutralColor,
-                letterSpacing: -0.4,
-              ),
-            ),
-            const SizedBox(width: 8),
-            if (_pendingRequests.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryRed,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '${_pendingRequests.length}',
+            Row(
+              children: [
+                Text(
+                  'Pending Requests',
                   style: GoogleFonts.manrope(
-                    color: Colors.white,
+                    fontSize: 17,
                     fontWeight: FontWeight.w800,
-                    fontSize: 11,
+                    color: AppTheme.neutralColor,
+                    letterSpacing: -0.4,
                   ),
                 ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (_pendingRequests.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFEEEFF0), width: 1.2),
-            ),
-            child: Center(
-              child: Column(
-                children: [
-                  const Icon(
-                    LucideIcons.checkSquare,
-                    color: Colors.green,
-                    size: 28,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'No pending requests. Great job!',
-                    style: GoogleFonts.manrope(
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
+                const SizedBox(width: 8),
+                if (pendingRequests.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryRed,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${pendingRequests.length}',
+                      style: GoogleFonts.manrope(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11,
+                      ),
                     ),
                   ),
-                ],
-              ),
+              ],
             ),
-          )
-        else
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _pendingRequests.length,
-            itemBuilder: (context, index) {
-              final req = _pendingRequests[index];
-              return _buildRequestCard(req);
-            },
-          ),
-      ],
+            const SizedBox(height: 12),
+            if (snapshot.connectionState == ConnectionState.waiting)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: CircularProgressIndicator(color: AppTheme.primaryRed),
+                ),
+              )
+            else if (pendingRequests.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFEEEFF0), width: 1.2),
+                ),
+                child: Center(
+                  child: Column(
+                    children: [
+                      const Icon(
+                        LucideIcons.checkSquare,
+                        color: Colors.green,
+                        size: 28,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No pending requests. Great job!',
+                        style: GoogleFonts.manrope(
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: pendingRequests.length,
+                itemBuilder: (context, index) {
+                  final req = pendingRequests[index];
+                  return _buildRequestCard(req);
+                },
+              ),
+          ],
+        );
+      },
     );
   }
 
   Widget _buildRequestCard(Map<String, dynamic> req) {
-    final bool isMarco = req['initials'] != null;
+    final String name = req['name'] ?? req['learnerName'] ?? 'Student';
+    final String initials =
+        req['initials'] ?? (name.isNotEmpty ? name[0].toUpperCase() : 'S');
+    final String degree = req['degree'] ?? 'Undergraduate';
+    final String price = req['price']?.toString() ?? '450';
+    final String type = req['type'] ?? 'Session';
+    final String subject = req['subject'] ?? 'Tutoring';
+    final String schedule =
+        req['schedule'] ?? req['timeDetail'] ?? req['time'] ?? 'TBD';
+    final String? avatarUrl = req['avatar'];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -920,25 +954,25 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
         children: [
           Row(
             children: [
-              if (isMarco)
+              if (avatarUrl != null && avatarUrl.isNotEmpty)
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: Colors.grey.shade300,
+                  backgroundImage: NetworkImage(avatarUrl),
+                  onBackgroundImageError: (exception, stackTrace) {},
+                )
+              else
                 CircleAvatar(
                   radius: 20,
                   backgroundColor: AppTheme.primaryRed.withOpacity(0.1),
                   child: Text(
-                    req['initials'],
+                    initials,
                     style: GoogleFonts.manrope(
                       color: AppTheme.primaryRed,
                       fontWeight: FontWeight.w800,
                       fontSize: 13,
                     ),
                   ),
-                )
-              else
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: Colors.grey.shade300,
-                  backgroundImage: NetworkImage(req['avatar']),
-                  onBackgroundImageError: (exception, stackTrace) {},
                 ),
               const SizedBox(width: 12),
               Expanded(
@@ -946,7 +980,7 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      req['name'],
+                      name,
                       style: GoogleFonts.manrope(
                         fontWeight: FontWeight.w800,
                         fontSize: 14.5,
@@ -954,7 +988,7 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                       ),
                     ),
                     Text(
-                      req['degree'],
+                      degree,
                       style: GoogleFonts.manrope(
                         fontSize: 11.5,
                         color: Colors.grey.shade500,
@@ -971,7 +1005,7 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '₱${req['price']} ${req['type']}',
+                  '₱$price $type',
                   style: GoogleFonts.manrope(
                     color: AppTheme.primaryRed,
                     fontWeight: FontWeight.w800,
@@ -1000,7 +1034,7 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '${req['subject']} | ${req['schedule']}',
+                    '$subject | $schedule',
                     style: GoogleFonts.manrope(
                       color: const Color(0xFF495057),
                       fontSize: 11.5,
@@ -1088,7 +1122,8 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
 
   // --- YOUR SERVICES SECTION ---
   Widget _buildYourServicesSection() {
-    final email = FirebaseAuth.instance.currentUser?.email ?? 'tutor@umindanao.edu.ph';
+    final email =
+        FirebaseAuth.instance.currentUser?.email ?? 'tutor@umindanao.edu.ph';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1107,10 +1142,7 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
             ),
             GestureDetector(
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const ManageServicesScreen()),
-                );
+                context.findAncestorStateOfType<TutorLayoutState>()?.setIndex(1);
               },
               child: Container(
                 width: 30,
@@ -1158,7 +1190,11 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(LucideIcons.briefcase, color: Colors.grey.shade300, size: 48),
+                    Icon(
+                      LucideIcons.briefcase,
+                      color: Colors.grey.shade300,
+                      size: 48,
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       'No services published yet.',
@@ -1193,6 +1229,15 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
 
   Widget _buildServiceCatalogCard(Map<String, dynamic> svc) {
     final bool isDraft = svc['status'] == 'Draft';
+    
+    // Improved image resolution logic
+    String imageUrl = '';
+    final dynamic svcImg = svc['imageUrl'] ?? svc['image'];
+    if (svcImg != null && svcImg.toString().isNotEmpty) {
+      imageUrl = svcImg.toString();
+    } else {
+      imageUrl = 'https://images.unsplash.com/photo-1544377193-33dcf4d68fb5?q=80&w=500&auto=format&fit=crop';
+    }
 
     return Container(
       width: 200,
@@ -1223,23 +1268,39 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(12),
                   ),
-                  image: svc['image'] != null
-                      ? DecorationImage(
-                          image: NetworkImage(svc['image']),
-                          fit: BoxFit.cover,
-                          onError: (exception, stackTrace) {},
-                        )
-                      : null,
                 ),
-                child: isDraft
-                    ? Center(
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(12),
+                  ),
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppTheme.primaryRed.withOpacity(0.3),
+                          ),
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      color: AppTheme.primaryRed.withOpacity(0.05),
+                      child: Center(
                         child: Icon(
-                          LucideIcons.fileText,
-                          color: Colors.grey.shade400,
+                          isDraft ? LucideIcons.fileText : LucideIcons.image,
+                          color: AppTheme.primaryRed.withOpacity(0.2),
                           size: 32,
                         ),
-                      )
-                    : null,
+                      ),
+                    ),
+                  ),
+                ),
               ),
               Positioned(
                 top: 8,
@@ -1266,7 +1327,7 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        svc['status'].toUpperCase(),
+                        svc['status']?.toUpperCase() ?? 'ACTIVE',
                         style: GoogleFonts.manrope(
                           color: Colors.white,
                           fontSize: 8.5,
@@ -1286,7 +1347,7 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    svc['title'],
+                    svc['title'] ?? 'Untitled Service',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.manrope(
@@ -1318,7 +1379,7 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
-                              svc['alert'],
+                              svc['alert'] ?? 'Setup Incomplete',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.manrope(
@@ -1348,7 +1409,7 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                               ),
                             ),
                             Text(
-                              '${(svc['progress'] * 100).toInt()}%',
+                              '${((svc['progress'] ?? 0.0) * 100).toInt()}%',
                               style: GoogleFonts.manrope(
                                 fontSize: 8.5,
                                 fontWeight: FontWeight.w800,
@@ -1359,7 +1420,7 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                         ),
                         const SizedBox(height: 2),
                         LinearProgressIndicator(
-                          value: svc['progress'],
+                          value: (svc['progress'] ?? 0.0).toDouble(),
                           color: AppTheme.primaryRed,
                           backgroundColor: Colors.grey.shade200,
                           minHeight: 3.5,
@@ -1378,7 +1439,7 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      svc['price'] ?? '',
+                      (svc['rate'] != null) ? '₱${svc['rate']}/hr' : (svc['price'] != null ? '₱${svc['price']}/hr' : '₱0/hr'),
                       style: GoogleFonts.manrope(
                         color: AppTheme.primaryRed,
                         fontWeight: FontWeight.w800,
@@ -1419,15 +1480,19 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
                             height: 26,
                             child: ElevatedButton(
                               onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Service promote initiated!',
-                                      style: GoogleFonts.manrope(),
+                                if (_isSubscribed) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Service promote initiated for ${svc['title']}!',
+                                        style: GoogleFonts.manrope(),
+                                      ),
+                                      backgroundColor: AppTheme.neutralColor,
                                     ),
-                                    backgroundColor: AppTheme.neutralColor,
-                                  ),
-                                );
+                                  );
+                                } else {
+                                  _showSubscribeDialog();
+                                }
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.primaryRed,
@@ -1457,51 +1522,6 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  // --- NOTIFICATION FAB ---
-  Widget _buildNotificationFab() {
-    final user = FirebaseAuth.instance.currentUser;
-    final email = user?.email ?? '';
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(email)
-          .collection('notifications')
-          .where('isRead', isEqualTo: false)
-          .snapshots(),
-      builder: (context, snapshot) {
-        final hasUnread = snapshot.hasData && snapshot.data!.docs.isNotEmpty;
-
-        return FloatingActionButton(
-          heroTag: 'tutor_notification_fab',
-          onPressed: _showNotificationPanel,
-          backgroundColor: AppTheme.primaryRed,
-          elevation: 4,
-          shape: const CircleBorder(),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              const Icon(LucideIcons.bell, color: Colors.white),
-              if (hasUnread)
-                Positioned(
-                  right: 2,
-                  top: 2,
-                  child: Container(
-                    width: 9,
-                    height: 9,
-                    decoration: const BoxDecoration(
-                      color: AppTheme.secondaryGold,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

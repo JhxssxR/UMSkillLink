@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
-import '../../core/demo_mode.dart';
 
 class AdminDashboardScreen extends StatelessWidget {
   final Function(int)? onTabChange;
@@ -39,80 +38,75 @@ class AdminDashboardScreen extends StatelessWidget {
             const SizedBox(width: 24),
 
             // Stat Card 2: Daily Revenue
-            DemoMode.isActive
-                ? const _StatCard(
-                    title: 'Daily Revenue',
-                    value: '₱450.00',
-                    trend: 'Estimated',
-                    icon: LucideIcons.banknote,
-                    color: Colors.green,
-                  )
-                : StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('bookings')
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      double totalRevenue = 0.0;
-                      if (snapshot.hasData) {
-                        for (var doc in snapshot.data!.docs) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          final price =
-                              double.tryParse(
-                                (data['price'] ?? '0.0').toString().replaceAll(
-                                  '₱',
-                                  '',
-                                ),
-                              ) ??
-                              0.0;
-                          totalRevenue += price * 0.05; // 5% commission
-                        }
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('transactions')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                double totalRevenue = 0.0;
+                if (snapshot.hasData) {
+                  final now = DateTime.now();
+                  final today = DateTime(now.year, now.month, now.day);
+                  
+                  for (var doc in snapshot.data!.docs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    
+                    // Filter for today's transactions
+                    final timestamp = (data['date'] ?? data['timestamp']) as Timestamp?;
+                    if (timestamp != null) {
+                      final date = timestamp.toDate();
+                      if (date.isAfter(today)) {
+                        final amount = (data['amount'] ?? 0).toDouble();
+                        totalRevenue += amount;
                       }
-                      return _StatCard(
-                        title: 'Daily Revenue',
-                        value: '₱${totalRevenue.toStringAsFixed(2)}',
-                        trend: 'Estimated',
-                        icon: LucideIcons.banknote,
-                        color: Colors.green,
-                      );
-                    },
-                  ),
+                    }
+                  }
+                }
+                return _StatCard(
+                  title: 'Daily Revenue',
+                  value: '₱${totalRevenue.toStringAsFixed(2)}',
+                  trend: 'Real-time',
+                  icon: LucideIcons.banknote,
+                  color: Colors.green,
+                );
+              },
+            ),
             const SizedBox(width: 24),
 
             // Stat Card 3: New Users
-            DemoMode.isActive
-                ? _StatCard(
-                    title: 'New Users',
-                    value: '12',
-                    trend: 'Platform Growth',
-                    icon: LucideIcons.users,
-                    color: AppTheme.tertiaryIndigo,
-                  )
-                : StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('users')
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      final count = snapshot.hasData
-                          ? snapshot.data!.docs.length
-                          : 0;
-                      return _StatCard(
-                        title: 'New Users',
-                        value: count.toString(),
-                        trend: 'Platform Growth',
-                        icon: LucideIcons.users,
-                        color: AppTheme.tertiaryIndigo,
-                      );
-                    },
-                  ),
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                return _StatCard(
+                  title: 'New Users',
+                  value: count.toString(),
+                  trend: 'Platform Growth',
+                  icon: LucideIcons.users,
+                  color: AppTheme.tertiaryIndigo,
+                );
+              },
+            ),
             const SizedBox(width: 24),
 
             // Stat Card 4: Pro Subscriptions
-            _StatCard(
-              title: 'Pro Subscriptions',
-              value: '89', // Placeholder
-              trend: 'Active',
-              icon: LucideIcons.star,
-              color: AppTheme.primaryRed,
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('subscriptions')
+                  .where('status', isEqualTo: 'Active')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                return _StatCard(
+                  title: 'Pro Subscriptions',
+                  value: count.toString(),
+                  trend: 'Active',
+                  icon: LucideIcons.star,
+                  color: AppTheme.primaryRed,
+                );
+              },
             ),
           ],
         ),
@@ -147,9 +141,7 @@ class AdminDashboardScreen extends StatelessWidget {
                             ),
                           ),
                           TextButton(
-                            onPressed: () => onTabChange?.call(
-                              1,
-                            ), // index 2 is Service Approvals Screen
+                            onPressed: () => onTabChange?.call(1),
                             child: Text(
                               'View All',
                               style: GoogleFonts.manrope(
@@ -266,17 +258,24 @@ class AdminDashboardScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      _ModerationItem(
-                        icon: LucideIcons.shieldAlert,
-                        label: 'Reported: Spam Profile',
-                        subtext: '@user_3429 • 10m ago',
-                        color: AppTheme.primaryRed,
-                      ),
-                      _ModerationItem(
-                        icon: LucideIcons.alertCircle,
-                        label: 'Disputed Transaction',
-                        subtext: 'TXN-4921 • 1h ago',
-                        color: AppTheme.secondaryGold,
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance.collection('audit_logs').limit(2).snapshots(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                            return Text('No recent activities.', style: GoogleFonts.manrope(fontSize: 12, color: Colors.grey));
+                          }
+                          return Column(
+                            children: snapshot.data!.docs.map((doc) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              return _ModerationItem(
+                                icon: LucideIcons.shieldAlert,
+                                label: data['action'] ?? 'System Action',
+                                subtext: 'Admin Activity',
+                                color: AppTheme.primaryRed,
+                              );
+                            }).toList(),
+                          );
+                        },
                       ),
                       const SizedBox(height: 24),
                       const Divider(),
@@ -289,11 +288,23 @@ class AdminDashboardScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      _TransactionItem(
-                        from: 'Juan Dela Cruz',
-                        to: 'Maria Clara',
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance.collection('transactions').limit(2).snapshots(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                            return Text('No recent transactions.', style: GoogleFonts.manrope(fontSize: 12, color: Colors.grey));
+                          }
+                          return Column(
+                            children: snapshot.data!.docs.map((doc) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              return _TransactionItem(
+                                from: data['user'] ?? 'User',
+                                to: data['type'] ?? 'Transaction',
+                              );
+                            }).toList(),
+                          );
+                        },
                       ),
-                      _TransactionItem(from: 'Ana Maria', to: 'Jose Rizal Jr.'),
                     ],
                   ),
                 ),
@@ -335,7 +346,7 @@ class _StatCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
+                  color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: color, size: 20),
@@ -491,6 +502,8 @@ class _ModerationItem extends StatelessWidget {
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -536,7 +549,7 @@ class _TransactionItem extends StatelessWidget {
                     text: from,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  const TextSpan(text: ' to '),
+                  const TextSpan(text: ' - '),
                   TextSpan(
                     text: to,
                     style: const TextStyle(fontWeight: FontWeight.w600),

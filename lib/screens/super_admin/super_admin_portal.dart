@@ -8,11 +8,8 @@ import '../../widgets/admin_layout.dart';
 import '../login_screen.dart';
 import 'super_admin_dashboard_screen.dart';
 import 'user_management_screen.dart';
-import 'service_approvals_screen.dart';
-import 'reports_analytics_screen.dart';
-import 'system_settings_screen.dart';
-import 'audit_logs_screen.dart';
-import '../admin/subscription_management_screen.dart';
+import 'commission_management_screen.dart';
+import 'system_health_screen.dart';
 import '../notifications_screen.dart';
 
 class SuperAdminPortal extends StatefulWidget {
@@ -260,12 +257,9 @@ class _SuperAdminPortalState extends State<SuperAdminPortal> {
           });
         },
       ),
-      const UserManagementScreen(),
-      const ServiceApprovalsScreen(isSuperAdmin: true),
-      const ReportsAnalyticsScreen(),
-      const SystemSettingsScreen(),
-      const SubscriptionManagementScreen(),
-      const AuditLogsScreen(),
+      UserManagementScreen(),
+      CommissionManagementScreen(),
+      SystemHealthScreen(),
     ];
 
     return AdminLayout(

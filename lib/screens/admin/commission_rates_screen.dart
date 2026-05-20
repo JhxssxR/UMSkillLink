@@ -216,7 +216,7 @@ class _CommissionRatesScreenState extends State<CommissionRatesScreen> {
         const SizedBox(height: 32),
 
         Text(
-          'Tier Exceptions (Coming Soon)',
+          'Tier Exceptions',
           style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 16),
@@ -225,36 +225,76 @@ class _CommissionRatesScreenState extends State<CommissionRatesScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(48.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  LucideIcons.shieldAlert,
-                  size: 48,
-                  color: Colors.grey,
+          child: Column(
+            children: [
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.secondaryGold.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(LucideIcons.star, color: AppTheme.secondaryGold, size: 20),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'Custom Commission Exceptions',
-                  style: GoogleFonts.manrope(
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                title: Text(
+                  'Tutor Pro Tier',
+                  style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(
+                  'Reduced platform fee for subscribed professional tutors.',
+                  style: GoogleFonts.manrope(fontSize: 13),
+                ),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '3.0%',
+                    style: GoogleFonts.manrope(
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'The ability to set custom rates for specific tutor tiers or specific users will be added here.',
-                  style: GoogleFonts.manrope(
-                    color: Colors.grey.shade400,
-                    fontSize: 13,
+              ),
+              const Divider(height: 1),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(LucideIcons.user, color: Colors.grey, size: 20),
+                ),
+                title: Text(
+                  'Standard / Free Tier',
+                  style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(
+                  'Default platform fee for all other users.',
+                  style: GoogleFonts.manrope(fontSize: 13),
+                ),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryRed.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${_defaultRate.toStringAsFixed(1)}%',
+                    style: GoogleFonts.manrope(
+                      color: AppTheme.primaryRed,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ],

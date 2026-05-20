@@ -207,40 +207,22 @@ class AdminLayout extends StatelessWidget {
                           onTap: () => onIndexChanged(0),
                         ),
                         _SidebarItem(
-                          icon: LucideIcons.users,
-                          label: 'User Management',
+                          icon: LucideIcons.userCog,
+                          label: 'Manage Admin Accounts',
                           isActive: selectedIndex == 1,
                           onTap: () => onIndexChanged(1),
                         ),
                         _SidebarItem(
-                          icon: LucideIcons.clipboardCheck,
-                          label: 'Service Approvals',
+                          icon: LucideIcons.percent,
+                          label: 'Platform Commission',
                           isActive: selectedIndex == 2,
                           onTap: () => onIndexChanged(2),
                         ),
                         _SidebarItem(
-                          icon: LucideIcons.barChart3,
-                          label: 'Reports & Analytics',
+                          icon: LucideIcons.activity,
+                          label: 'System Health & Security',
                           isActive: selectedIndex == 3,
                           onTap: () => onIndexChanged(3),
-                        ),
-                        _SidebarItem(
-                          icon: LucideIcons.settings,
-                          label: 'System Settings',
-                          isActive: selectedIndex == 4,
-                          onTap: () => onIndexChanged(4),
-                        ),
-                        _SidebarItem(
-                          icon: LucideIcons.creditCard,
-                          label: 'Subscriptions',
-                          isActive: selectedIndex == 5,
-                          onTap: () => onIndexChanged(5),
-                        ),
-                        _SidebarItem(
-                          icon: LucideIcons.history,
-                          label: 'Audit Logs',
-                          isActive: selectedIndex == 6,
-                          onTap: () => onIndexChanged(6),
                         ),
                       ],
                     ],
@@ -377,34 +359,30 @@ class AdminLayout extends StatelessWidget {
         case 0:
           return 'Admin Dashboard';
         case 1:
-          return 'Commission Rates';
+          return 'Verify Tutors';
         case 2:
-          return 'Subscription Management';
+          return 'Commission Rates';
         case 3:
-          return 'User Management';
+          return 'Subscription Management';
         case 4:
+          return 'Manage Accounts';
+        case 5:
           return 'Transactions';
         default:
-          return 'Admin Panel';
+          return 'Admin Portal';
       }
     } else {
       switch (index) {
         case 0:
           return 'Super Admin Dashboard';
         case 1:
-          return 'User Management';
+          return 'Manage Accounts';
         case 2:
-          return 'Service Approval Queue';
+          return 'Commission Management';
         case 3:
-          return 'Reports & Analytics';
-        case 4:
-          return 'System Settings';
-        case 5:
-          return 'Subscription Management';
-        case 6:
-          return 'Audit Logs';
+          return 'System Health & Security';
         default:
-          return 'Admin Panel';
+          return 'Super Admin Portal';
       }
     }
   }
@@ -442,7 +420,7 @@ class _SidebarItem extends StatelessWidget {
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         tileColor: isActive
-            ? AppTheme.primaryRed.withValues(alpha: 0.08)
+            ? AppTheme.primaryRed.withOpacity(0.08)
             : null,
       ),
     );

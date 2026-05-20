@@ -1,104 +1,307 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/app_theme.dart';
-import '../../models/mock_data.dart';
 import '../../components/custom_app_bar.dart';
 import 'chat_screen.dart';
 
-class MessagesScreen extends StatelessWidget {
+class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key});
 
   @override
+  State<MessagesScreen> createState() => _MessagesScreenState();
+}
+
+class _MessagesScreenState extends State<MessagesScreen> {
+  @override
   Widget build(BuildContext context) {
+    final String studentEmail = FirebaseAuth.instance.currentUser?.email?.toLowerCase() ?? '';
+
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: const Color(0xFFF8F9FA),
       appBar: const CustomAppBar(
-        subtitle: 'Messages',
-        centerTitle: false,
         showBackButton: false,
+        centerTitle: false,
       ),
-      body: ListView.builder(
-        itemCount: MockData.messages.length,
-        itemBuilder: (context, index) {
-          final message = MockData.messages[index];
-          return _buildMessageItem(
-            context,
-            message['name'],
-            message['message'],
-            message['time'],
-            message['isUnread'],
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('bookings')
+            .where('studentEmail', isEqualTo: studentEmail)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: AppTheme.primaryRed));
+          }
+
+          final allBookings = snapshot.data?.docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                data['id'] = doc.id;
+                return data;
+              }).toList() ?? [];
+
+          final confirmedBookings = allBookings.where((b) => 
+            b['status'] == 'Confirmed' || b['status'] == 'Pending'
+          ).toList();
+
+          // Group by tutor email to avoid duplicate chat entries
+          final Map<String, Map<String, dynamic>> uniqueTutors = {};
+          for (var booking in confirmedBookings) {
+            final email = booking['tutorEmail'] ?? '';
+            if (email.isNotEmpty && !uniqueTutors.containsKey(email)) {
+              uniqueTutors[email] = booking;
+            }
+          }
+
+          final tutorsList = uniqueTutors.values.toList();
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                child: Text(
+                  'Messages',
+                  style: GoogleFonts.manrope(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF1A1C1E),
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ),
+              
+              // Search Bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFEEEFF0)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.02),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: TextField(
+                    decoration: InputDecoration(
+                      icon: const Icon(LucideIcons.search, size: 18, color: Color(0xFF7A7C80)),
+                      hintText: 'Search tutors...',
+                      hintStyle: GoogleFonts.manrope(
+                        color: const Color(0xFFADB5BD),
+                        fontSize: 14,
+                      ),
+                      border: InputBorder.none,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Active Tutors (Horizontal)
+              if (tutorsList.isNotEmpty)
+                SizedBox(
+                  height: 90,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: tutorsList.length,
+                    itemBuilder: (context, index) {
+                      final tutor = tutorsList[index];
+                      final name = tutor['tutorName'] ?? 'Tutor';
+                      
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: GestureDetector(
+                          onTap: () => _openChat(context, tutor),
+                          child: Column(
+                            children: [
+                              Stack(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 28,
+                                    backgroundColor: AppTheme.primaryRed.withOpacity(0.1),
+                                    child: Text(
+                                      name[0],
+                                      style: GoogleFonts.manrope(
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.primaryRed,
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    right: 2,
+                                    bottom: 2,
+                                    child: Container(
+                                      width: 14,
+                                      height: 14,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF2ECC71),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.white, width: 2),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                name.split(' ')[0],
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.manrope(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF495057),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+              const Divider(height: 32, color: Color(0xFFF1F3F5), thickness: 1),
+
+              // Conversations List
+              Expanded(
+                child: tutorsList.isEmpty 
+                  ? _buildEmptyState()
+                  : ListView.builder(
+                      itemCount: tutorsList.length,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemBuilder: (context, index) {
+                        return _buildMessageItem(context, tutorsList[index]);
+                      },
+                    ),
+              ),
+            ],
           );
         },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {},
+        backgroundColor: AppTheme.primaryRed,
+        child: const Icon(LucideIcons.edit3, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildMessageItem(
-    BuildContext context,
-    String name,
-    String message,
-    String time,
-    bool isUnread,
-  ) {
-    return Container(
-      color: isUnread
-          ? AppTheme.primaryRed.withValues(alpha: 0.05)
-          : Colors.white,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-        leading: CircleAvatar(
-          backgroundColor: AppTheme.primaryRed.withValues(alpha: 0.2),
-          child: Text(
-            name[0],
-            style: const TextStyle(
-              color: AppTheme.primaryRed,
+  void _openChat(BuildContext context, Map<String, dynamic> tutor) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatScreen(
+          name: tutor['tutorName'] ?? 'Tutor',
+          peerEmail: tutor['tutorEmail'] ?? '',
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(LucideIcons.messageSquare, size: 48, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          Text(
+            'No conversations yet',
+            style: GoogleFonts.manrope(
+              fontSize: 16,
               fontWeight: FontWeight.bold,
+              color: Colors.grey.shade500,
             ),
           ),
-        ),
-        title: Text(
-          name,
-          style: TextStyle(
-            fontWeight: isUnread ? FontWeight.bold : FontWeight.w600,
+          const SizedBox(height: 8),
+          Text(
+            'Contact a tutor to start a session.',
+            style: GoogleFonts.manrope(color: Colors.grey.shade400, fontSize: 13),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageItem(BuildContext context, Map<String, dynamic> tutor) {
+    final String name = tutor['tutorName'] ?? 'Tutor';
+    final String subject = tutor['subject'] ?? 'Tutoring';
+
+    return GestureDetector(
+      onTap: () => _openChat(context, tutor),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFEEEFF0)),
         ),
-        subtitle: Text(
-          message,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: isUnread ? Colors.black87 : Colors.grey.shade600,
-          ),
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+        child: Row(
           children: [
-            Text(
-              time,
-              style: TextStyle(
-                fontSize: 12,
-                color: isUnread ? AppTheme.primaryRed : Colors.grey.shade500,
-              ),
-            ),
-            if (isUnread) ...[
-              const SizedBox(height: 4),
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
+            CircleAvatar(
+              radius: 28,
+              backgroundColor: AppTheme.primaryRed.withOpacity(0.1),
+              child: Text(
+                name[0],
+                style: GoogleFonts.manrope(
                   color: AppTheme.primaryRed,
-                  shape: BoxShape.circle,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
                 ),
               ),
-            ],
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        name,
+                        style: GoogleFonts.manrope(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF1A1C1E),
+                        ),
+                      ),
+                      Text(
+                        'Just now',
+                        style: GoogleFonts.manrope(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFFADB5BD),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Booking for $subject confirmed',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: const Color(0xFF7A7C80),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => ChatScreen(name: name)),
-          );
-        },
       ),
     );
   }

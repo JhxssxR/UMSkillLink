@@ -31,34 +31,46 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     'Coding',
   ];
 
-  /// Maps a Firestore service doc to the tutor map format used by ServiceDetailsScreen.
   Map<String, dynamic> _serviceToTutorMap(Map<String, dynamic> svc) {
     final String tutorName = svc['name'] ?? svc['tutorName'] ?? 'Peer Tutor';
     final String title = svc['title'] ?? 'Untitled Service';
-    final String price = (svc['price'] ?? '₱0/hr')
-        .toString()
+    
+    // Extract price/rate correctly
+    dynamic rawPrice = svc['price'];
+    if (rawPrice == null || rawPrice.toString().trim().isEmpty || rawPrice.toString() == 'null') {
+      rawPrice = svc['rate'] ?? 0;
+    }
+    
+    String priceStr = rawPrice.toString()
         .replaceAll('₱', '')
         .replaceAll('/hr', '')
         .replaceAll(',', '')
         .trim();
+    if (priceStr.isEmpty || priceStr == 'null') priceStr = '0';
+
     return {
       'name': tutorName,
       'tutorEmail': svc['tutorEmail'],
       'subject': title,
       'rating': (svc['rating'] ?? 5.0).toDouble(),
       'reviews': (svc['reviews'] ?? 0).toInt(),
-      'price': price,
-      'rate': price,
-      'avatar': svc['tutorAvatar'] ?? svc['imageUrl'] ?? 'https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg',
-      'imageUrl': svc['imageUrl'] ?? 'https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg',
+      'price': priceStr,
+      'rate': priceStr,
+      'avatar':
+          svc['tutorAvatar'] ??
+          svc['imageUrl'] ??
+          'https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg',
+      'imageUrl':
+          svc['imageUrl'] ??
+          'https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg',
       'college': 'University of Mindanao',
-      'about': '$tutorName offers $title tutoring services. Book a session to learn more!',
+      'about':
+          '$tutorName offers $title tutoring services. Book a session to learn more!',
     };
   }
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: CustomAppBar(
@@ -338,19 +350,27 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   final allServices = docs
                       .map((d) => d.data() as Map<String, dynamic>)
                       .where((svc) {
-                        final title = (svc['title'] ?? '').toString().toLowerCase();
-                        final tutorName = (svc['name'] ?? svc['tutorName'] ?? '').toString().toLowerCase();
-                        
+                        final title = (svc['title'] ?? '')
+                            .toString()
+                            .toLowerCase();
+                        final tutorName =
+                            (svc['name'] ?? svc['tutorName'] ?? '')
+                                .toString()
+                                .toLowerCase();
+
                         // Category filtering
                         if (_selectedCategory != 'All Skills') {
-                          if (!title.contains(_selectedCategory.toLowerCase())) {
+                          if (!title.contains(
+                            _selectedCategory.toLowerCase(),
+                          )) {
                             return false;
                           }
                         }
-                        
+
                         // Search query filtering
                         if (_searchQuery.isNotEmpty) {
-                          if (!title.contains(_searchQuery) && !tutorName.contains(_searchQuery)) {
+                          if (!title.contains(_searchQuery) &&
+                              !tutorName.contains(_searchQuery)) {
                             return false;
                           }
                         }
@@ -374,9 +394,14 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   for (final svc in allServices) {
                     final reviews = (svc['reviews'] ?? 0).toInt();
                     final rating = (svc['rating'] ?? 0.0).toDouble();
-                    final subject = (svc['title'] ?? '').toString().toLowerCase().trim();
+                    final subject = (svc['title'] ?? '')
+                        .toString()
+                        .toLowerCase()
+                        .trim();
                     // Only feature if tutor has at least 10 good reviews (≥4.5 stars)
-                    if (reviews >= 10 && rating >= 4.5 && !seenSubjects.contains(subject)) {
+                    if (reviews >= 10 &&
+                        rating >= 4.5 &&
+                        !seenSubjects.contains(subject)) {
                       featuredSvc = svc;
                       seenSubjects.add(subject);
                       break; // Only 1 featured tutor
@@ -384,7 +409,15 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   }
 
                   final Map<String, dynamic>? featuredTutor =
-                      featuredSvc != null ? _serviceToTutorMap(featuredSvc) : null;
+                      featuredSvc != null
+                      ? _serviceToTutorMap(featuredSvc)
+                      : null;
+
+                  final bool isFeaturedPro = featuredTutor != null && featuredTutor['subscriptionTier'] == 'Tutor Pro';
+                  final String tutorName = featuredTutor != null ? (featuredTutor['name'] ?? 'Tutor Name') : 'Tutor Name';
+
+                  final bool isOwnFeatured = featuredTutor != null &&
+                      FirebaseAuth.instance.currentUser?.email == featuredTutor['tutorEmail'];
 
                   // Remaining = all services except the featured one
                   final remainingServices = featuredSvc != null
@@ -413,12 +446,18 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                 vertical: 4,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFBB03B).withOpacity(0.15),
+                                color: const Color(
+                                  0xFFFBB03B,
+                                ).withOpacity(0.15),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.verified, color: Color(0xFFFBB03B), size: 14),
+                                  const Icon(
+                                    Icons.verified,
+                                    color: Color(0xFFFBB03B),
+                                    size: 14,
+                                  ),
                                   const SizedBox(width: 4),
                                   Text(
                                     'Based on feedback',
@@ -479,20 +518,31 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                           fit: StackFit.expand,
                                           children: [
                                             Image.network(
-                                              featuredTutor['imageUrl'] ?? 'https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg',
+                                              featuredTutor['imageUrl'] ??
+                                                  'https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg',
                                               fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) =>
-                                                  Container(
+                                              errorBuilder:
+                                                  (
+                                                    context,
+                                                    error,
+                                                    stackTrace,
+                                                  ) => Container(
                                                     height: 160,
-                                                    color: AppTheme.primaryRed.withOpacity(0.1),
+                                                    color: AppTheme.primaryRed
+                                                        .withOpacity(0.1),
                                                     child: const Icon(
                                                       LucideIcons.image,
-                                                      color: AppTheme.primaryRed,
+                                                      color:
+                                                          AppTheme.primaryRed,
                                                       size: 40,
                                                     ),
                                                   ),
                                             ),
-                                            Container(color: Colors.black.withOpacity(0.1)),
+                                            Container(
+                                              color: Colors.black.withOpacity(
+                                                0.1,
+                                              ),
+                                            ),
                                           ],
                                         ),
                                       ),
@@ -507,7 +557,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                         ),
                                         decoration: BoxDecoration(
                                           color: const Color(0xFFFBB03B),
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                         ),
                                         child: Row(
                                           children: [
@@ -534,20 +586,36 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                 Padding(
                                   padding: const EdgeInsets.all(16),
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
                                         children: [
                                           Expanded(
-                                            child: Text(
-                                              featuredTutor['name'] ?? 'Tutor Name',
-                                              style: GoogleFonts.manrope(
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.bold,
-                                                color: const Color(0xFF1A1C1E),
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
+                                            child: Row(
+                                              children: [
+                                                Flexible(
+                                                  child: Text(
+                                                    tutorName,
+                                                    style: GoogleFonts.manrope(
+                                                      fontSize: 18,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: const Color(0xFF1A1C1E),
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                if (isFeaturedPro) ...[
+                                                  const SizedBox(width: 4),
+                                                  const Icon(
+                                                    Icons.stars,
+                                                    color: AppTheme.secondaryGold,
+                                                    size: 16,
+                                                  ),
+                                                ],
+                                              ],
                                             ),
                                           ),
                                           Container(
@@ -557,7 +625,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                             ),
                                             decoration: BoxDecoration(
                                               color: const Color(0xFFF1F3F5),
-                                              borderRadius: BorderRadius.circular(6),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
                                             ),
                                             child: Row(
                                               children: [
@@ -572,7 +641,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                                   style: GoogleFonts.manrope(
                                                     fontSize: 11,
                                                     fontWeight: FontWeight.w800,
-                                                    color: const Color(0xFF1A1C1E),
+                                                    color: const Color(
+                                                      0xFF1A1C1E,
+                                                    ),
                                                   ),
                                                 ),
                                               ],
@@ -599,7 +670,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                           ),
                                           const SizedBox(width: 6),
                                           Text(
-                                            featuredTutor['college'] ?? 'University of Mindanao',
+                                            featuredTutor['college'] ??
+                                                'University of Mindanao',
                                             style: GoogleFonts.manrope(
                                               color: const Color(0xFF495057),
                                               fontSize: 12,
@@ -617,21 +689,32 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                               context,
                                               MaterialPageRoute(
                                                 builder: (context) =>
-                                                    ServiceDetailsScreen(tutor: featuredTutor),
+                                                    ServiceDetailsScreen(
+                                                      tutor: featuredTutor,
+                                                    ),
                                               ),
                                             );
                                           },
                                           style: ElevatedButton.styleFrom(
-                                            backgroundColor: AppTheme.primaryRed,
+                                            backgroundColor:
+                                                AppTheme.primaryRed,
                                             foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(vertical: 12),
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 12,
+                                            ),
                                             elevation: 0,
                                             shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
                                           ),
                                           child: Text(
-                                            'Book Session • ₱${featuredTutor['rate'] ?? 250}/hr',
+                                            isOwnFeatured
+                                                ? 'View Your Service'
+                                                : (featuredTutor['rate'] == '0' ||
+                                                        featuredTutor['rate'] == 0)
+                                                    ? 'Book Session • FREE'
+                                                    : 'Book Session • ₱${featuredTutor['rate'] ?? 250}/hr',
                                             style: GoogleFonts.manrope(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 14,
@@ -687,7 +770,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                 childAspectRatio: 0.8,
                               ),
                           itemBuilder: (context, index) {
-                            final tutorMap = _serviceToTutorMap(remainingServices[index]);
+                            final tutorMap = _serviceToTutorMap(
+                              remainingServices[index],
+                            );
                             return _buildMiniTutorCard(context, tutorMap);
                           },
                         ),
@@ -704,8 +789,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   }
 
   Widget _buildMiniTutorCard(BuildContext context, Map<String, dynamic> tutor) {
+    final String? currentUserEmail = FirebaseAuth.instance.currentUser?.email;
+    final bool isOwnService = currentUserEmail != null && currentUserEmail == tutor['tutorEmail'];
     final String avatarUrl =
-        tutor['avatar'] ?? 'https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg';
+        tutor['avatar'] ??
+        'https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg';
     final String tutorEmail = tutor['tutorEmail'] ?? '';
     final String initialName = tutor['name'] ?? 'Peer Tutor';
 
@@ -721,14 +809,22 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
       overflow: TextOverflow.ellipsis,
     );
 
-    if ((initialName == 'Peer Tutor' || initialName == 'null null' || initialName.isEmpty) && tutorEmail.isNotEmpty) {
+    if ((initialName == 'Peer Tutor' ||
+            initialName == 'null null' ||
+            initialName.isEmpty) &&
+        tutorEmail.isNotEmpty) {
       nameWidget = FutureBuilder<DocumentSnapshot>(
-        future: FirebaseFirestore.instance.collection('users').doc(tutorEmail).get(),
+        future: FirebaseFirestore.instance
+            .collection('users')
+            .doc(tutorEmail)
+            .get(),
         builder: (context, snapshot) {
           String fetchedName = 'Peer Tutor';
           if (snapshot.hasData && snapshot.data!.exists) {
             final data = snapshot.data!.data() as Map<String, dynamic>;
-            fetchedName = data['name'] ?? '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'.trim();
+            fetchedName =
+                data['name'] ??
+                '${data['firstName'] ?? ''} ${data['lastName'] ?? ''}'.trim();
             if (fetchedName.isEmpty) fetchedName = 'Peer Tutor';
             tutor['name'] = fetchedName;
           }
@@ -776,13 +872,18 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
             Expanded(
               flex: 4,
               child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(15),
+                ),
                 child: Image.network(
                   avatarUrl,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) => Container(
                     color: AppTheme.primaryRed.withOpacity(0.1),
-                    child: const Icon(LucideIcons.image, color: AppTheme.primaryRed),
+                    child: const Icon(
+                      LucideIcons.image,
+                      color: AppTheme.primaryRed,
+                    ),
                   ),
                 ),
               ),
@@ -791,7 +892,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
             Expanded(
               flex: 5,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10.0,
+                  vertical: 8.0,
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -815,7 +919,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(Icons.star, color: Color(0xFFFBB03B), size: 12),
+                              const Icon(
+                                Icons.star,
+                                color: Color(0xFFFBB03B),
+                                size: 12,
+                              ),
                               const SizedBox(width: 2),
                               Text(
                                 (tutor['rating'] ?? 5.0).toString(),
@@ -847,20 +955,24 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => ServiceDetailsScreen(tutor: tutor),
+                              builder: (context) =>
+                                  ServiceDetailsScreen(tutor: tutor),
                             ),
                           );
                         },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppTheme.primaryRed,
-                          side: const BorderSide(color: AppTheme.primaryRed, width: 1),
+                          side: const BorderSide(
+                            color: AppTheme.primaryRed,
+                            width: 1,
+                          ),
                           padding: EdgeInsets.zero,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),
                         child: Text(
-                          'Book a Session',
+                          isOwnService ? 'View Service' : 'Book a Session',
                           style: GoogleFonts.manrope(
                             fontWeight: FontWeight.bold,
                             fontSize: 11,
@@ -882,25 +994,41 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     BuildContext context,
     Map<String, dynamic> svc,
   ) {
+    final bool isOwnService = FirebaseAuth.instance.currentUser?.email == svc['tutorEmail'];
     final String tutorName = svc['tutorName'] ?? 'Peer Tutor';
     final String title = svc['title'] ?? 'Untitled Service';
-    final String price = svc['price'] ?? '₱0/hr';
+    
+    dynamic rawPrice = svc['price'];
+    if (rawPrice == null || rawPrice.toString().trim().isEmpty || rawPrice.toString() == 'null') {
+      rawPrice = svc['rate'] ?? 0;
+    }
+    
+    String displayPrice = rawPrice.toString();
+    if (!displayPrice.contains('₱') && rawPrice.toString() != '0' && rawPrice != 0) {
+      displayPrice = '₱$displayPrice/hr';
+    } else if (rawPrice.toString() == '0' || rawPrice == 0 || displayPrice == 'FREE') {
+      displayPrice = 'FREE';
+    }
+
     final double rating = (svc['rating'] ?? 5.0).toDouble();
     final int reviews = (svc['reviews'] ?? 0).toInt();
     final String? avatarUrl = svc['tutorAvatar'];
-    final String firstLetter =
-        tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T';
+    final String firstLetter = tutorName.isNotEmpty
+        ? tutorName[0].toUpperCase()
+        : 'T';
 
     // Extract numeric price for ServiceDetailsScreen
-    final priceNum = price
+    final priceNum = displayPrice
         .replaceAll('₱', '')
         .replaceAll('/hr', '')
         .replaceAll(',', '')
+        .replaceAll('FREE', '0')
         .trim();
 
     // Map service data to tutor format for ServiceDetailsScreen
     final tutorMap = <String, dynamic>{
       'name': tutorName,
+      'tutorEmail': svc['tutorEmail'],
       'subject': title,
       'rating': rating,
       'reviews': reviews,
@@ -911,6 +1039,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
       'about':
           '$tutorName offers $title tutoring services. Book a session to learn more!',
     };
+
+    final bool isPro = svc['subscriptionTier'] == 'Tutor Pro';
 
     return GestureDetector(
       onTap: () {
@@ -975,13 +1105,29 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    'by $tutorName',
-                    style: GoogleFonts.manrope(
-                      color: const Color(0xFF7A7C80),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          'by $tutorName',
+                          style: GoogleFonts.manrope(
+                            color: const Color(0xFF7A7C80),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isPro) ...[
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.stars,
+                          color: AppTheme.secondaryGold,
+                          size: 12,
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 6),
                   Row(
@@ -1010,9 +1156,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  price,
+                  displayPrice,
                   style: GoogleFonts.manrope(
-                    color: AppTheme.primaryRed,
+                    color: displayPrice == 'FREE'
+                        ? Colors.green
+                        : AppTheme.primaryRed,
                     fontWeight: FontWeight.w800,
                     fontSize: 15,
                   ),
@@ -1040,7 +1188,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                       ),
                     ),
                     child: Text(
-                      'Book',
+                      isOwnService ? 'View' : 'Book',
                       style: GoogleFonts.manrope(
                         fontWeight: FontWeight.bold,
                         fontSize: 11,
@@ -1117,11 +1265,13 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      price,
+                      (price == '₱0/hr' || price == '0') ? 'FREE' : price,
                       style: GoogleFonts.manrope(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
-                        color: AppTheme.primaryRed,
+                        color: (price == '₱0/hr' || price == '0')
+                            ? Colors.green
+                            : AppTheme.primaryRed,
                       ),
                     ),
                   ],

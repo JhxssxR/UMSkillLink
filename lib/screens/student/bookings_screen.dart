@@ -8,6 +8,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'feedback_screen.dart';
+import 'chat_screen.dart';
 import '../../models/mock_data.dart';
 import '../../components/notification_bell.dart';
 import '../../services/notification_service.dart';
@@ -22,6 +23,95 @@ class BookingsScreen extends StatefulWidget {
 class _BookingsScreenState extends State<BookingsScreen> {
   bool _isUpcomingTab = true;
   bool _hasPendingRequest = true;
+
+  void _showEndSessionConfirmation(BuildContext context, Map<String, dynamic> booking) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'End Session',
+          style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'Confirm that the tutoring session with ${booking['tutorName']} for ${booking['subject']} has finished? Once both you and the tutor confirm, the session will be marked as complete.',
+          style: GoogleFonts.manrope(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: GoogleFonts.manrope(color: Colors.grey, fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              _processMutualEnd(context, booking);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryRed,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Confirm End'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _processMutualEnd(BuildContext context, Map<String, dynamic> booking) async {
+    final String requestId = booking['id'];
+    final String studentEmail = FirebaseAuth.instance.currentUser?.email ?? '';
+    final String tutorEmail = booking['tutorEmail'] ?? '';
+
+    if (studentEmail.isNotEmpty && tutorEmail.isNotEmpty) {
+      // Show loading overlay
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: AppTheme.primaryRed),
+        ),
+      );
+
+      try {
+        // 1. Finalize the session immediately (Unpend money)
+        await MockData.finalizeSession(requestId, tutorEmail);
+
+        // 2. Notify Tutor
+        if (tutorEmail.isNotEmpty) {
+          await NotificationService.sendNotification(
+            tutorEmail,
+            'Session Completed! ✅',
+            'Student has confirmed the end of the session for ${booking['subject']}. Funds have been released.',
+            'session_completed',
+          );
+        }
+
+        // 3. Close loading dialog safely
+        if (context.mounted) {
+          Navigator.of(context, rootNavigator: true).pop(); // Force pop from root to ensure dialog closes
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Session completed! Money has been released to the tutor.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('Error during session finalization: $e');
+        if (context.mounted) {
+          Navigator.of(context, rootNavigator: true).pop(); // Close dialog on error too
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: AppTheme.primaryRed,
+            ),
+          );
+        }
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -235,418 +325,576 @@ class _BookingsScreenState extends State<BookingsScreen> {
               const SizedBox(height: 24),
 
               // Booking List Cards
-              if (_isUpcomingTab) ...[
-                ...MockData.learnerBookings
-                    .where((booking) => booking['isUpcoming'] == true)
-                    .map((booking) {
-                      String datePart = 'Upcoming';
-                      String timePart = booking['time'] ?? 'TBD';
-                      final timeStr = booking['time']?.toString() ?? '';
-                      if (timeStr.contains('•')) {
-                        final parts = timeStr.split('•');
-                        datePart = parts[0].trim();
-                        timePart = parts[1].trim();
-                      } else if (timeStr.contains(',')) {
-                        final parts = timeStr.split(',');
-                        datePart = parts[0].trim();
-                        timePart = parts[1].trim();
-                      }
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('bookings')
+                    .where(
+                      'studentEmail',
+                      isEqualTo: FirebaseAuth.instance.currentUser?.email ??
+                          'student@umindanao.edu.ph',
+                    )
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: CircularProgressIndicator(color: AppTheme.primaryRed),
+                      ),
+                    );
+                  }
 
-                      final isPending = booking['status'] == 'Pending';
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text('Error loading bookings.', style: GoogleFonts.manrope(color: Colors.grey)),
+                    );
+                  }
 
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: _buildUpcomingCard(
-                          subject: booking['subject'] ?? 'Tutoring Session',
-                          tutorName: booking['tutorName'] ?? 'Tutor',
-                          status: booking['status'] ?? 'Confirmed',
-                          statusColor: isPending
-                              ? const Color(0xFF7A7C80)
-                              : const Color(0xFFFBB03B),
-                          date: datePart,
-                          time: timePart,
-                          imageUrl:
-                              booking['imagePath'] ??
-                              'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100',
-                          actionButtons: isPending
-                              ? [
-                                  Expanded(
-                                    child: ElevatedButton(
-                                      onPressed: () {
-                                        setState(() {
-                                          MockData.learnerBookings.removeWhere(
-                                            (b) => b['id'] == booking['id'],
-                                          );
-                                          MockData.tutorRequests.removeWhere(
-                                            (r) => r['id'] == booking['id'],
-                                          );
-                                        });
+                  final docs = snapshot.data?.docs ?? [];
+                  final allBookings = docs.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    data['id'] = doc.id; // ensure we have the doc ID
+                    return data;
+                  }).toList();
 
-                                        // Trigger notification to tutor
-                                        final tutorEmail = booking['tutorEmail'] ?? 'tutor_sarah@umindanao.edu.ph';
-                                        NotificationService.sendNotification(
-                                          tutorEmail,
-                                          'Booking Cancelled ℹ️',
-                                          'The booking request by Gabriel Reyes for ${booking['subject']} has been cancelled.',
-                                          'booking_cancelled',
-                                        );
-                                        MockData.syncBookingDeleted(
-                                          booking['id'].toString(),
-                                        );
-                                        MockData.syncTutorRequestDeleted(
-                                          booking['id'].toString(),
-                                        );
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              'Booking request successfully cancelled.',
-                                              style: GoogleFonts.manrope(
-                                                fontWeight: FontWeight.bold,
+                  final upcomingBookings = allBookings
+                      .where((booking) => booking['isUpcoming'] == true)
+                      .toList();
+                  final completedBookings = allBookings
+                      .where((booking) => booking['isUpcoming'] == false)
+                      .toList();
+
+                  if (_isUpcomingTab) {
+                    return Column(
+                      children: [
+                        ...upcomingBookings.map((booking) {
+                          String datePart = 'Upcoming';
+                          String timePart = booking['time'] ?? 'TBD';
+                          final timeStr = booking['time']?.toString() ?? '';
+                          if (timeStr.contains('•')) {
+                            final parts = timeStr.split('•');
+                            datePart = parts[0].trim();
+                            timePart = parts[1].trim();
+                          } else if (timeStr.contains(',')) {
+                            final parts = timeStr.split(',');
+                            datePart = parts[0].trim();
+                            timePart = parts[1].trim();
+                          }
+
+                          final isPending = booking['status'] == 'Pending';
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: _buildUpcomingCard(
+                              subject: booking['subject'] ?? 'Tutoring Session',
+                              tutorName: booking['tutorName'] ?? 'Tutor',
+                              status: booking['status'] ?? 'Confirmed',
+                              statusColor: isPending
+                                  ? const Color(0xFF7A7C80)
+                                  : const Color(0xFFFBB03B),
+                              date: datePart,
+                              time: timePart,
+                              imageUrl: booking['imagePath'] ??
+                                  booking['avatar'] ??
+                                  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100',
+                              actionButtons: isPending
+                                  ? [
+                                      Expanded(
+                                        child: Column(
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: OutlinedButton.icon(
+                                                    onPressed: () {
+                                                      final tutorName = booking['tutorName'] ?? 'Tutor';
+                                                      
+                                                      // 1. Add to MockData.messages if not already present
+                                                      final bool exists = MockData.messages.any((m) => m['name'] == tutorName);
+                                                      if (!exists) {
+                                                        MockData.messages.insert(0, {
+                                                          'name': tutorName,
+                                                          'message': 'Starting a new conversation...',
+                                                          'time': 'Just now',
+                                                          'isUnread': false,
+                                                        });
+                                                      }
+
+                                                      // 2. Switch to Messages Tab
+                                                      final layoutState = context.findAncestorStateOfType<StudentLayoutState>();
+                                                      if (layoutState != null) {
+                                                        layoutState.setIndex(2);
+                                                      }
+                                                    },
+                                                    icon: const Icon(LucideIcons.messageCircle, size: 16),
+                                                    label: const Text('Message'),
+                                                    style: OutlinedButton.styleFrom(
+                                                      foregroundColor: AppTheme.primaryRed,
+                                                      side: const BorderSide(color: AppTheme.primaryRed),
+                                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: OutlinedButton.icon(
+                                                    onPressed: () {
+                                                      // Trigger notification to tutor
+                                                      final tutorEmail = booking['tutorEmail'] ?? 'tutor_sarah@umindanao.edu.ph';
+                                                      NotificationService.sendNotification(
+                                                        tutorEmail,
+                                                        'Reschedule Request 🗓️',
+                                                        'Student has requested to reschedule the session for ${booking['subject']}.',
+                                                        'booking_reschedule',
+                                                      );
+
+                                                      ScaffoldMessenger.of(context).showSnackBar(
+                                                        SnackBar(
+                                                          content: Text(
+                                                            'Reschedule request sent to ${booking['tutorName']}.',
+                                                            style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+                                                          ),
+                                                          backgroundColor: AppTheme.secondaryGold,
+                                                        ),
+                                                      );
+                                                    },
+                                                    icon: const Icon(LucideIcons.calendar, size: 16),
+                                                    label: const Text('Reschedule'),
+                                                    style: OutlinedButton.styleFrom(
+                                                      foregroundColor: const Color(0xFF495057),
+                                                      side: const BorderSide(color: Color(0xFFCED4DA)),
+                                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 12),
+                                            SizedBox(
+                                              width: double.infinity,
+                                              child: ElevatedButton(
+                                                onPressed: () {
+                                                  final bookingId = booking['id'];
+                                                  if (bookingId != null) {
+                                                    FirebaseFirestore.instance
+                                                        .collection('bookings')
+                                                        .doc(bookingId)
+                                                        .delete();
+                                                  }
+                                                  
+                                                  // Trigger notification to tutor
+                                                  final tutorEmail = booking['tutorEmail'] ?? 'tutor_sarah@umindanao.edu.ph';
+                                                  NotificationService.sendNotification(
+                                                    tutorEmail,
+                                                    'Booking Cancelled ℹ️',
+                                                    'The booking request for ${booking['subject']} has been cancelled.',
+                                                    'booking_cancelled',
+                                                  );
+                                                  
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                        'Booking request successfully cancelled.',
+                                                        style: GoogleFonts.manrope(
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                      backgroundColor: AppTheme.primaryRed,
+                                                    ),
+                                                  );
+                                                },
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: const Color(0xFFF1F3F5),
+                                                  foregroundColor: const Color(0xFF495057),
+                                                  elevation: 0,
+                                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  'Cancel Request',
+                                                  style: GoogleFonts.manrope(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
                                               ),
                                             ),
-                                            backgroundColor:
-                                                AppTheme.primaryRed,
-                                          ),
-                                        );
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(
-                                          0xFFF1F3F5,
-                                        ),
-                                        foregroundColor: const Color(
-                                          0xFF495057,
-                                        ),
-                                        elevation: 0,
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 12,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
+                                          ],
                                         ),
                                       ),
-                                      child: Text(
-                                        'Cancel Request',
-                                        style: GoogleFonts.manrope(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
+                                    ]
+                                  : [
+                                      Expanded(
+                                        child: StreamBuilder<DocumentSnapshot>(
+                                          stream: FirebaseFirestore.instance.collection('bookings').doc(booking['id']).snapshots(),
+                                          builder: (context, snap) {
+                                            bool endRequested = false;
+                                            bool isAutoCompleted = false;
+                                            if (snap.hasData && snap.data!.exists) {
+                                              final d = snap.data!.data() as Map<String, dynamic>;
+                                              endRequested = d['endRequestedAt'] != null;
+                                              
+                                              if (endRequested && d['status'] == 'Confirmed') {
+                                                final Timestamp ts = d['endRequestedAt'];
+                                                final diff = DateTime.now().difference(ts.toDate());
+                                                if (diff.inMinutes >= 5) {
+                                                  isAutoCompleted = true;
+                                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                                    MockData.finalizeSession(booking['id'], booking['tutorEmail']);
+                                                  });
+                                                }
+                                              }
+                                            }
+
+                                            return Column(
+                                              children: [
+                                                // Primary Action Row (End Session / Confirm)
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: ElevatedButton(
+                                                        onPressed: !endRequested || isAutoCompleted ? null : () {
+                                                          _showEndSessionConfirmation(context, booking);
+                                                        },
+                                                        style: ElevatedButton.styleFrom(
+                                                          backgroundColor: !endRequested ? Colors.grey.shade300 : AppTheme.primaryRed,
+                                                          foregroundColor: Colors.white,
+                                                          elevation: 0,
+                                                          padding: const EdgeInsets.symmetric(vertical: 14),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(8),
+                                                          ),
+                                                        ),
+                                                        child: Text(
+                                                          isAutoCompleted ? 'Completed' : (endRequested ? 'Confirm End & Pay' : 'End Session'),
+                                                          style: GoogleFonts.manrope(
+                                                            fontWeight: FontWeight.w800,
+                                                            fontSize: 14,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    if (endRequested && !isAutoCompleted) ...[
+                                                      const SizedBox(width: 8),
+                                                      SizedBox(
+                                                        width: 52,
+                                                        height: 52,
+                                                        child: OutlinedButton(
+                                                          onPressed: () {
+                                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                              const SnackBar(content: Text('Complain submitted to Admin. Money will remain pending.')),
+                                                            );
+                                                          },
+                                                          style: OutlinedButton.styleFrom(
+                                                            foregroundColor: Colors.red,
+                                                            side: const BorderSide(color: Colors.red, width: 1.5),
+                                                            padding: EdgeInsets.zero,
+                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                          ),
+                                                          child: const Icon(LucideIcons.alertOctagon, size: 20),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 12),
+                                                // Secondary Actions Row (Message / Reschedule)
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: OutlinedButton.icon(
+                                                        onPressed: () {
+                                                          final tutorName = booking['tutorName'] ?? 'Tutor';
+                                                          final bool exists = MockData.messages.any((m) => m['name'] == tutorName);
+                                                          if (!exists) {
+                                                            MockData.messages.insert(0, {
+                                                              'name': tutorName,
+                                                              'message': 'Starting a new conversation...',
+                                                              'time': 'Just now',
+                                                              'isUnread': false,
+                                                            });
+                                                          }
+                                                          final layoutState = context.findAncestorStateOfType<StudentLayoutState>();
+                                                          if (layoutState != null) {
+                                                            layoutState.setIndex(2);
+                                                          }
+                                                        },
+                                                        icon: const Icon(LucideIcons.messageCircle, size: 16),
+                                                        label: const Text('Message'),
+                                                        style: OutlinedButton.styleFrom(
+                                                          foregroundColor: AppTheme.primaryRed,
+                                                          side: const BorderSide(color: AppTheme.primaryRed),
+                                                          padding: const EdgeInsets.symmetric(vertical: 12),
+                                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    Expanded(
+                                                      child: OutlinedButton.icon(
+                                                        onPressed: () {
+                                                          final tutorEmail = booking['tutorEmail'] ?? 'tutor_sarah@umindanao.edu.ph';
+                                                          NotificationService.sendNotification(
+                                                            tutorEmail,
+                                                            'Reschedule Request 🗓️',
+                                                            'Student has requested to reschedule the session for ${booking['subject']}.',
+                                                            'booking_reschedule',
+                                                          );
+
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                            SnackBar(
+                                                              content: Text(
+                                                                'Request to reschedule session submitted to tutor.',
+                                                                style: GoogleFonts.manrope(
+                                                                  fontWeight: FontWeight.bold,
+                                                                ),
+                                                              ),
+                                                              backgroundColor: AppTheme.secondaryGold,
+                                                            ),
+                                                          );
+                                                        },
+                                                        icon: const Icon(LucideIcons.calendar, size: 16),
+                                                        label: const Text('Reschedule'),
+                                                        style: OutlinedButton.styleFrom(
+                                                          foregroundColor: const Color(0xFF495057),
+                                                          side: const BorderSide(color: Color(0xFFCED4DA)),
+                                                          padding: const EdgeInsets.symmetric(vertical: 12),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(8),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            );
+                                          }
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                ]
-                              : [
-                                  Expanded(
-                                    child: ElevatedButton(
-                                      onPressed: () {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              'Launching digital peer session conference room...',
-                                              style: GoogleFonts.manrope(
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            backgroundColor: Colors.green,
-                                          ),
-                                        );
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppTheme.primaryRed,
-                                        foregroundColor: Colors.white,
-                                        elevation: 0,
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 12,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        'Join Session',
-                                        style: GoogleFonts.manrope(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: OutlinedButton(
-                                      onPressed: () {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              'Request to reschedule session submitted to tutor.',
-                                              style: GoogleFonts.manrope(
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            backgroundColor:
-                                                AppTheme.secondaryGold,
-                                          ),
-                                        );
-                                      },
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: const Color(
-                                          0xFF495057,
-                                        ),
-                                        side: const BorderSide(
-                                          color: Color(0xFFCED4DA),
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 12,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        'Reschedule',
-                                        style: GoogleFonts.manrope(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                        ),
-                                      ),
+                                    ],
+                            ),
+                          );
+                        }),
+                        if (upcomingBookings.isEmpty) ...[
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 32),
+                            child: Center(
+                              child: Column(
+                                children: [
+                                  const Icon(LucideIcons.calendarX, color: Colors.grey, size: 48),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No upcoming sessions booked.',
+                                    style: GoogleFonts.manrope(
+                                      color: Colors.grey,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ],
-                        ),
-                      );
-                    })
-                    .toList(),
-
-                if (MockData.learnerBookings
-                    .where((booking) => booking['isUpcoming'] == true)
-                    .isEmpty) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 32),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          const Icon(
-                            LucideIcons.calendarX,
-                            color: Colors.grey,
-                            size: 48,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'No upcoming sessions booked.',
-                            style: GoogleFonts.manrope(
-                              color: Colors.grey,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                  ),
-                ],
-
-                // Dotted Exploration Panel "Book New Session"
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const StudentLayout(initialIndex: 0),
-                      ),
-                      (route) => false,
-                    );
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 28,
-                      horizontal: 16,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFFDF9),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: AppTheme.primaryRed.withOpacity(0.2),
-                        width: 1.5,
-                        style: BorderStyle
-                            .solid, // simulated dotted style visually with harmonious parameters
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryRed.withOpacity(0.08),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            LucideIcons.plusCircle,
-                            color: AppTheme.primaryRed,
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Book New Session',
-                          style: GoogleFonts.manrope(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.primaryRed,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Need help with another subject?',
-                          style: GoogleFonts.manrope(
-                            fontSize: 12,
-                            color: const Color(0xFF7A7C80),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: () {
+                        // Dotted Exploration Panel "Book New Session"
+                        GestureDetector(
+                          onTap: () {
                             Navigator.pushAndRemoveUntil(
                               context,
                               MaterialPageRoute(
-                                builder: (context) =>
-                                    const StudentLayout(initialIndex: 0),
+                                builder: (context) => const StudentLayout(initialIndex: 0),
                               ),
                               (route) => false,
                             );
                           },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryRed,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 10,
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFFDF9),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: AppTheme.primaryRed.withOpacity(0.2),
+                                width: 1.5,
+                                style: BorderStyle.solid,
+                              ),
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                          child: Text(
-                            'Explore Tutors',
-                            style: GoogleFonts.manrope(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
+                            child: Column(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryRed.withOpacity(0.08),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(LucideIcons.plusCircle, color: AppTheme.primaryRed, size: 24),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Book New Session',
+                                  style: GoogleFonts.manrope(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.primaryRed,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Need help with another subject?',
+                                  style: GoogleFonts.manrope(
+                                    fontSize: 12,
+                                    color: const Color(0xFF7A7C80),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    Navigator.pushAndRemoveUntil(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const StudentLayout(initialIndex: 0),
+                                      ),
+                                      (route) => false,
+                                    );
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppTheme.primaryRed,
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Explore Tutors',
+                                    style: GoogleFonts.manrope(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
                       ],
-                    ),
-                  ),
-                ),
-              ] else ...[
-                ...MockData.learnerBookings
-                    .where((booking) => booking['isUpcoming'] == false)
-                    .map((booking) {
-                      String datePart = 'Completed';
-                      String timePart = booking['time'] ?? 'TBD';
-                      final timeStr = booking['time']?.toString() ?? '';
-                      if (timeStr.contains('•')) {
-                        final parts = timeStr.split('•');
-                        datePart = parts[0].trim();
-                        timePart = parts[1].trim();
-                      } else if (timeStr.contains(',')) {
-                        final parts = timeStr.split(',');
-                        datePart = parts[0].trim();
-                        timePart = parts[1].trim();
-                      }
+                    );
+                  } else {
+                    return Column(
+                      children: [
+                        ...completedBookings.map((booking) {
+                          String datePart = 'Completed';
+                          String timePart = booking['time'] ?? 'TBD';
+                          final timeStr = booking['time']?.toString() ?? '';
+                          if (timeStr.contains('•')) {
+                            final parts = timeStr.split('•');
+                            datePart = parts[0].trim();
+                            timePart = parts[1].trim();
+                          } else if (timeStr.contains(',')) {
+                            final parts = timeStr.split(',');
+                            datePart = parts[0].trim();
+                            timePart = parts[1].trim();
+                          }
 
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: _buildUpcomingCard(
-                          subject: booking['subject'] ?? 'Tutoring Session',
-                          tutorName: booking['tutorName'] ?? 'Tutor',
-                          status: booking['status'] ?? 'Completed',
-                          statusColor: Colors.green,
-                          date: datePart,
-                          time: timePart,
-                          imageUrl:
-                              booking['imagePath'] ??
-                              'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100',
-                          actionButtons: [
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          const FeedbackScreen(),
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: _buildUpcomingCard(
+                              subject: booking['subject'] ?? 'Tutoring Session',
+                              tutorName: booking['tutorName'] ?? 'Tutor',
+                              status: booking['status'] ?? 'Completed',
+                              statusColor: Colors.green,
+                              date: datePart,
+                              time: timePart,
+                              imageUrl: booking['imagePath'] ??
+                                  booking['avatar'] ??
+                                  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100',
+                              actionButtons: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => FeedbackScreen(booking: booking),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(LucideIcons.star, size: 16),
+                                    label: const Text('Feedback'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.secondaryGold,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
                                     ),
-                                  );
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppTheme.secondaryGold,
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
-                                child: Text(
-                                  'Write Review',
-                                  style: GoogleFonts.manrope(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => FeedbackScreen(
+                                            booking: booking,
+                                            initialComplaint: true,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(LucideIcons.alertTriangle, size: 16),
+                                    label: const Text('Complain'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                      side: const BorderSide(color: Colors.red),
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
-                          ],
-                        ),
-                      );
-                    })
-                    .toList(),
-
-                if (MockData.learnerBookings
-                    .where((booking) => booking['isUpcoming'] == false)
-                    .isEmpty) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 32),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          const Icon(
-                            LucideIcons.history,
-                            color: Colors.grey,
-                            size: 48,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'No completed sessions yet.',
-                            style: GoogleFonts.manrope(
-                              color: Colors.grey,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
+                          );
+                        }),
+                        if (completedBookings.isEmpty) ...[
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 32),
+                            child: Center(
+                              child: Column(
+                                children: [
+                                  const Icon(LucideIcons.history, color: Colors.grey, size: 48),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No completed sessions yet.',
+                                    style: GoogleFonts.manrope(
+                                      color: Colors.grey,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+                      ],
+                    );
+                  }
+                },
+              ),
               const SizedBox(height: 40),
             ],
           ),

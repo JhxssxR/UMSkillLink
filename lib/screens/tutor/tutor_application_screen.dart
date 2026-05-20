@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/app_theme.dart';
-import '../../widgets/tutor_layout.dart';
 import '../../components/custom_app_bar.dart';
+import '../../models/mock_data.dart';
+import '../../services/notification_service.dart';
 
 class TutorApplicationScreen extends StatefulWidget {
   const TutorApplicationScreen({super.key});
@@ -16,36 +19,139 @@ class TutorApplicationScreen extends StatefulWidget {
 }
 
 class _TutorApplicationScreenState extends State<TutorApplicationScreen> {
-  final TextEditingController _nameController = TextEditingController(
-    text: 'Juan D. Dela Cruz',
-  );
-  final TextEditingController _idController = TextEditingController(
-    text: '2023-0000',
-  );
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _idController = TextEditingController();
   final TextEditingController _skillSearchController = TextEditingController();
   final TextEditingController _bioController = TextEditingController();
   final TextEditingController _rateController = TextEditingController(
     text: '0.00',
   );
-
-  String _selectedCollege = 'College of Engineering';
-  final List<String> _colleges = [
-    'College of Engineering',
-    'College of Computing Education',
-    'College of Business Administration',
-    'College of Architecture',
-    'College of Arts and Sciences',
-  ];
+  final TextEditingController _collegeController = TextEditingController();
 
   final List<String> _skills = ['Calculus', 'Python'];
 
   bool _isUploadingId = false;
   bool _idUploaded = false;
+  String? _idImageUrl;
 
   bool _isUploadingExpertise = false;
   bool _expertiseUploaded = false;
+  String? _expertiseImageUrl;
+
+  final ImagePicker _picker = ImagePicker();
+
+  String _subscriptionTier = 'Free';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserTier();
+    _fetchUserDetails();
+  }
+
+  void _fetchUserDetails() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final String email = user.email!.toLowerCase();
+      try {
+        // 1. Try fetching from users collection first
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(email)
+            .get();
+        
+        if (userDoc.exists) {
+          final data = userDoc.data() as Map<String, dynamic>;
+          setState(() {
+            _nameController.text = data['name'] ?? user.displayName ?? '';
+            _idController.text = data['studentId'] ?? '';
+            _collegeController.text = data['college'] ?? '';
+          });
+        }
+
+        // 2. Fallback/Supplement from student_directory
+        if (_idController.text.isEmpty || _collegeController.text.isEmpty || _nameController.text.isEmpty) {
+          final dirDoc = await FirebaseFirestore.instance
+              .collection('student_directory')
+              .doc(email)
+              .get();
+          
+          if (dirDoc.exists) {
+            final dirData = dirDoc.data() as Map<String, dynamic>;
+            setState(() {
+              if (_nameController.text.isEmpty) {
+                _nameController.text = dirData['name'] ?? dirData['fullName'] ?? '';
+              }
+              if (_idController.text.isEmpty) {
+                _idController.text = dirData['studentId'] ?? dirData['id'] ?? '';
+              }
+              if (_collegeController.text.isEmpty) {
+                _collegeController.text = dirData['college'] ?? dirData['department'] ?? '';
+              }
+            });
+          } else {
+            // Try searching by email field if doc ID lookup fails
+            final query = await FirebaseFirestore.instance
+                .collection('student_directory')
+                .where('email', isEqualTo: email)
+                .limit(1)
+                .get();
+            
+            if (query.docs.isNotEmpty) {
+              final dirData = query.docs.first.data();
+              setState(() {
+                if (_nameController.text.isEmpty) {
+                  _nameController.text = dirData['name'] ?? dirData['fullName'] ?? '';
+                }
+                if (_idController.text.isEmpty) {
+                  _idController.text = dirData['studentId'] ?? dirData['id'] ?? '';
+                }
+                if (_collegeController.text.isEmpty) {
+                  _collegeController.text = dirData['college'] ?? dirData['department'] ?? '';
+                }
+              });
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error fetching user details for application: $e');
+      }
+    }
+  }
+
+  void _fetchUserTier() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final tier = await MockData.getSubscriptionTier(user.email!);
+      if (mounted) {
+        setState(() {
+          _subscriptionTier = tier;
+        });
+      }
+    }
+  }
 
   void _addSkill(String skill) {
+    final limit = MockData.getSubjectLimit(_subscriptionTier);
+    if (_skills.length >= limit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Your current plan limits you to $limit skills. Upgrade to Tutor Pro for more!',
+          ),
+          backgroundColor: AppTheme.secondaryGold,
+          action: SnackBarAction(
+            label: 'UPGRADE',
+            textColor: Colors.white,
+            onPressed: () {
+              // Navigation to subscription page would go here
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
     if (skill.trim().isNotEmpty && !_skills.contains(skill.trim())) {
       setState(() {
         _skills.add(skill.trim());
@@ -60,46 +166,84 @@ class _TutorApplicationScreenState extends State<TutorApplicationScreen> {
     });
   }
 
-  void _simulateIdUpload() {
+  void _pickAndUploadId() async {
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      imageQuality: 70,
+    );
+    if (image == null) return;
+
     setState(() {
       _isUploadingId = true;
     });
-    Timer(const Duration(seconds: 1), () {
+
+    try {
+      final bytes = await image.readAsBytes();
+      final String base64Image = 'data:image/png;base64,${base64Encode(bytes)}';
+
       setState(() {
         _isUploadingId = false;
         _idUploaded = true;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'University ID uploaded successfully!',
-            style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+        _idImageUrl = base64Image;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('University ID processed successfully!'),
+            backgroundColor: Colors.green,
           ),
-          backgroundColor: Colors.green,
-        ),
-      );
-    });
+        );
+      });
+    } catch (e) {
+      setState(() {
+        _isUploadingId = false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to process ID. Please try again.'),
+            backgroundColor: AppTheme.primaryRed,
+          ),
+        );
+      });
+    }
   }
 
-  void _simulateExpertiseUpload() {
+  void _pickAndUploadExpertise() async {
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      imageQuality: 70,
+    );
+    if (image == null) return;
+
     setState(() {
       _isUploadingExpertise = true;
     });
-    Timer(const Duration(seconds: 1), () {
+
+    try {
+      final bytes = await image.readAsBytes();
+      final String base64Image = 'data:image/png;base64,${base64Encode(bytes)}';
+
       setState(() {
         _isUploadingExpertise = false;
         _expertiseUploaded = true;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Proof of expertise uploaded successfully!',
-            style: GoogleFonts.manrope(fontWeight: FontWeight.bold),
+        _expertiseImageUrl = base64Image;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Proof of expertise processed successfully!'),
+            backgroundColor: Colors.green,
           ),
-          backgroundColor: Colors.green,
-        ),
-      );
-    });
+        );
+      });
+    } catch (e) {
+      setState(() {
+        _isUploadingExpertise = false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to process documents. Please try again.'),
+            backgroundColor: AppTheme.primaryRed,
+          ),
+        );
+      });
+    }
   }
 
   void _submitApplication() async {
@@ -122,15 +266,22 @@ class _TutorApplicationScreenState extends State<TutorApplicationScreen> {
         'name': _nameController.text.trim(),
         'email': user?.email ?? 'learner@umindanao.edu.ph',
         'universityId': _idController.text.trim(),
-        'college': _selectedCollege,
+        'college': _collegeController.text.trim(),
         'skills': _skills,
         'bio': _bioController.text.trim(),
         'hourlyRate': double.tryParse(_rateController.text.trim()) ?? 0.0,
-        'idUploaded': _idUploaded,
-        'expertiseUploaded': _expertiseUploaded,
+        'idImageUrl': _idImageUrl,
+        'expertiseImageUrl': _expertiseImageUrl,
         'status': 'pending',
         'submittedAt': FieldValue.serverTimestamp(),
       });
+
+      // Notify Admin about the new application
+      await NotificationService.sendAdminNotification(
+        'New Tutor Application 📝',
+        '${_nameController.text.trim()} has submitted a new peer tutor application for review.',
+        'tutor_application',
+      );
 
       // Dismiss the loading dialog
       if (mounted) Navigator.pop(context);
@@ -241,55 +392,10 @@ class _TutorApplicationScreenState extends State<TutorApplicationScreen> {
         centerTitle: false,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Step Progress Indicator
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Step 1 of 3',
-                  style: GoogleFonts.manrope(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.primaryRed,
-                  ),
-                ),
-                Text(
-                  'Profile & Skills',
-                  style: GoogleFonts.manrope(
-                    fontSize: 13,
-                    color: const Color(0xFF7A7C80),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Stack(
-              children: [
-                Container(
-                  height: 6,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE9ECEF),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-                Container(
-                  height: 6,
-                  width: MediaQuery.of(context).size.width * 0.33,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryRed,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
             // Card 1: Personal Information
             _buildFormCard(
               icon: LucideIcons.user,
@@ -310,48 +416,9 @@ class _TutorApplicationScreenState extends State<TutorApplicationScreen> {
                   ),
                   const SizedBox(height: 16),
                   _buildInputLabel('College / Department'),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: const Color(0xFFEEEFF0),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _selectedCollege,
-                        isExpanded: true,
-                        icon: const Icon(
-                          LucideIcons.chevronDown,
-                          color: Color(0xFF7A7C80),
-                          size: 18,
-                        ),
-                        style: GoogleFonts.manrope(
-                          color: const Color(0xFF1A1C1E),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        items: _colleges.map((String college) {
-                          return DropdownMenuItem<String>(
-                            value: college,
-                            child: Text(college),
-                          );
-                        }).toList(),
-                        onChanged: (String? val) {
-                          if (val != null) {
-                            setState(() {
-                              _selectedCollege = val;
-                            });
-                          }
-                        },
-                      ),
-                    ),
+                  _buildTextField(
+                    controller: _collegeController,
+                    hint: 'Enter your college or department',
                   ),
                 ],
               ),
@@ -487,7 +554,8 @@ class _TutorApplicationScreenState extends State<TutorApplicationScreen> {
                   : 'Upload ID Photo',
               isUploading: _isUploadingId,
               isSuccess: _idUploaded,
-              onTap: _simulateIdUpload,
+              onTap: _pickAndUploadId,
+              previewUrl: _idImageUrl,
             ),
             const SizedBox(height: 20),
 
@@ -501,7 +569,8 @@ class _TutorApplicationScreenState extends State<TutorApplicationScreen> {
                   : 'Upload Documents',
               isUploading: _isUploadingExpertise,
               isSuccess: _expertiseUploaded,
-              onTap: _simulateExpertiseUpload,
+              onTap: _pickAndUploadExpertise,
+              previewUrl: _expertiseImageUrl,
             ),
             const SizedBox(height: 20),
 
@@ -803,6 +872,7 @@ class _TutorApplicationScreenState extends State<TutorApplicationScreen> {
     required bool isUploading,
     required bool isSuccess,
     required VoidCallback onTap,
+    String? previewUrl,
   }) {
     return Container(
       width: double.infinity,
@@ -814,20 +884,36 @@ class _TutorApplicationScreenState extends State<TutorApplicationScreen> {
       ),
       child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isSuccess
-                  ? Colors.green.withOpacity(0.08)
-                  : const Color(0xFFF1F3F5),
-              shape: BoxShape.circle,
+          if (isSuccess && previewUrl != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              height: 120,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                image: DecorationImage(
+                  image: previewUrl.startsWith('data:image')
+                      ? MemoryImage(base64Decode(previewUrl.split(',').last))
+                      : NetworkImage(previewUrl) as ImageProvider,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSuccess
+                    ? Colors.green.withOpacity(0.08)
+                    : const Color(0xFFF1F3F5),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isSuccess ? LucideIcons.checkCircle : icon,
+                color: isSuccess ? Colors.green : AppTheme.primaryRed,
+                size: 24,
+              ),
             ),
-            child: Icon(
-              isSuccess ? LucideIcons.checkCircle : icon,
-              color: isSuccess ? Colors.green : AppTheme.primaryRed,
-              size: 24,
-            ),
-          ),
           const SizedBox(height: 12),
           Text(
             title,
