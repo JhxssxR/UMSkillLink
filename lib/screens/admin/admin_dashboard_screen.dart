@@ -37,24 +37,31 @@ class AdminDashboardScreen extends StatelessWidget {
             ),
             const SizedBox(width: 24),
 
-            // Stat Card 2: Overall Revenue
+            // Stat Card 2: Overall Revenue (Total Platform Profit)
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('transactions')
+                  .where('status', isEqualTo: 'Completed')
                   .snapshots(),
               builder: (context, snapshot) {
                 double totalRevenue = 0.0;
                 if (snapshot.hasData) {
                   for (var doc in snapshot.data!.docs) {
                     final data = doc.data() as Map<String, dynamic>;
-                    final amount = (data['amount'] ?? 0).toDouble();
-                    totalRevenue += amount;
+                    final String type = (data['type'] ?? '').toString();
+                    final double amount = (data['amount'] ?? 0.0).toDouble();
+                    
+                    // ONLY sum income types (Commissions and Subscriptions)
+                    // Ignore Withdrawals/Payouts as they are not platform revenue
+                    if (type.contains('Commission') || type.contains('Subscription') || type.contains('Payment')) {
+                      totalRevenue += amount.abs();
+                    }
                   }
                 }
                 return _StatCard(
                   title: 'Overall Revenue',
                   value: '₱${totalRevenue.toStringAsFixed(2)}',
-                  trend: 'Real-time',
+                  trend: 'Real-time Profit',
                   icon: LucideIcons.banknote,
                   color: Colors.green,
                 );

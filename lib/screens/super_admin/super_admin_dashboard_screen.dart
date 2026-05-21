@@ -73,66 +73,34 @@ class SuperAdminDashboardScreen extends StatelessWidget {
             ),
             const SizedBox(width: 24),
 
-            // Stat Card 4: Platform Revenue / Bookings completed
+            // Stat Card 4: Platform Revenue (Total Profit)
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
-                  .collection('settings')
-                  .doc('commission_rules')
-                  .collection('rules')
+                  .collection('transactions')
+                  .where('status', isEqualTo: 'Completed')
                   .snapshots(),
-              builder: (context, rulesSnapshot) {
-                return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('users')
-                      .where('role', isEqualTo: 'tutor')
-                      .snapshots(),
-                  builder: (context, tutorsSnapshot) {
-                    return StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('bookings')
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        final totalBookings = snapshot.hasData ? snapshot.data!.docs.length : 0;
-                        double totalRevenue = 0.0;
-                        double feeRateDisplay = 5.0;
+              builder: (context, snapshot) {
+                double totalRevenue = 0.0;
 
-                        if (snapshot.hasData && tutorsSnapshot.hasData && rulesSnapshot.hasData) {
-                          final tutorSubStatus = {
-                            for (var doc in tutorsSnapshot.data!.docs)
-                              (doc.data() as Map<String, dynamic>)['email']: (doc.data() as Map<String, dynamic>)['isSubscribed'] ?? false
-                          };
+                if (snapshot.hasData) {
+                  for (var doc in snapshot.data!.docs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final String type = (data['type'] ?? '').toString();
+                    final double amount = (data['amount'] ?? 0.0).toDouble();
 
-                          final rules = {
-                            for (var doc in rulesSnapshot.data!.docs)
-                              doc.id: (doc.data() as Map<String, dynamic>)['rate'] ?? 0.0
-                          };
+                    // Only count platform income, ignore tutor withdrawals
+                    if (type.contains('Commission') || type.contains('Subscription') || type.contains('Payment')) {
+                      totalRevenue += amount.abs();
+                    }
+                  }
+                }
 
-                          final baseRate = rules['base_fee']?.toDouble() ?? 5.0;
-                          final premiumRate = rules['premium_fee']?.toDouble() ?? 3.0;
-                          feeRateDisplay = baseRate;
-
-                          for (var doc in snapshot.data!.docs) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            final price = double.tryParse((data['price'] ?? '0.0').toString().replaceAll('₱', '')) ?? 0.0;
-                            final tutorEmail = data['tutorEmail'];
-                            
-                            final isSubscribed = tutorSubStatus[tutorEmail] ?? false;
-                            final appliedRate = isSubscribed ? premiumRate : baseRate;
-                            
-                            totalRevenue += price * (appliedRate / 100);
-                          }
-                        }
-
-                        return _StatCard(
-                          title: 'Overall Revenue',
-                          value: '₱${totalRevenue.toStringAsFixed(2)}',
-                          trend: 'All-time Platform Earnings',
-                          icon: LucideIcons.banknote,
-                          color: AppTheme.primaryRed,
-                        );
-                      },
-                    );
-                  },
+                return _StatCard(
+                  title: 'Overall Revenue',
+                  value: '₱${totalRevenue.toStringAsFixed(2)}',
+                  trend: 'Lifetime Profit',
+                  icon: LucideIcons.banknote,
+                  color: AppTheme.primaryRed,
                 );
               },
             ),

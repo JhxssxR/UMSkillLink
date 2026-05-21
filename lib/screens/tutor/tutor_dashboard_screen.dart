@@ -137,14 +137,14 @@ class _TutorDashboardScreenState extends State<TutorDashboardScreen> {
             'earnings': 0.0,
           });
 
-          // 2. Log Transaction for Admin
+          // 2. Log Transaction for Admin (reflecting in overall revenue)
           final txnRef = FirebaseFirestore.instance.collection('transactions').doc();
           batch.set(txnRef, {
             'id': txnRef.id,
             'user': _tutorName,
             'userEmail': email,
-            'amount': withdrawnAmount,
-            'type': 'Withdrawal',
+            'amount': -withdrawnAmount, // NEGATIVE amount to deduct from overall revenue
+            'type': 'Tutor Withdrawal',
             'status': 'Completed',
             'date': FieldValue.serverTimestamp(),
           });

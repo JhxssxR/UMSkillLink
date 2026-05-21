@@ -190,14 +190,17 @@ class _ConfirmPaymentScreenState extends State<ConfirmPaymentScreen> {
           }
         }
 
-        // Log Booking Commission to Transactions for Admin Revenue tracking
+        // Log Platform Fee to Transactions for Admin Revenue tracking
         FirebaseFirestore.instance.collection('transactions').add({
-          'user': studentEmail,
-          'amount': widget.totalAmount * commissionRate,
+          'user': learnerName,
+          'userEmail': studentEmail,
+          'amount': widget.totalAmount * commissionRate, // Platform Revenue Only
           'type': 'Booking Commission',
           'status': 'Completed',
           'date': FieldValue.serverTimestamp(),
           'tutorEmail': tutorEmail,
+          'grossAmount': widget.totalAmount, // Keep gross for reference
+          'commissionRate': commissionRate,
         });
       });
 
